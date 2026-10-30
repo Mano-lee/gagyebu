@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f6f5c">
+<meta name="mobile-web-app-capable" content="yes">
+<title>내 가계부</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#f4f1ea;--card:#fff;--ink:#22302b;--sub:#7d8781;--accent:#1f6f5c;--red:#c4553f;--line:#e7e2d7}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:var(--bg);color:var(--ink);padding-bottom:84px}
+header{background:var(--accent);color:#fff;padding:18px 18px 22px}
+.mnav{display:flex;justify-content:space-between;align-items:center}
+.mnav button{background:none;border:0;color:#fff;font-size:24px;padding:2px 12px}
+.mnav span{font-weight:600;font-size:15px}
+.lbl{font-size:13px;opacity:.8;margin-top:14px}
+.big{font-size:34px;font-weight:700;margin-top:2px}
+.big.neg{color:#ffd2c8}
+.pills{display:flex;gap:8px;margin-top:14px}
+.pill{flex:1;background:rgba(255,255,255,.14);border-radius:12px;padding:9px 10px;font-size:11px}
+.pill b{display:block;font-size:14px;margin-top:3px}
+main{padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
+.card h2{font-size:15px;margin-bottom:12px}
+.muted{color:var(--sub);font-size:13px;line-height:1.5}
+.bar{margin-bottom:12px}
+.bar .t{display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px}
+.bar .tr{height:8px;background:#eee9df;border-radius:4px;overflow:hidden}
+.bar .fl{height:100%;background:var(--accent);border-radius:4px}
+.item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px;gap:8px}
+.item:last-child{border-bottom:0}
+.item small{display:block;color:var(--sub);font-size:12px;margin-top:2px}
+.tap{cursor:pointer}
+.tap:active{background:#faf8f3}
+.chev{color:var(--sub);font-size:18px;margin-left:8px}
+.out{color:var(--red);font-weight:600;white-space:nowrap}.in{color:var(--accent);font-weight:600;white-space:nowrap}
+.day{font-size:12px;color:var(--sub);margin:12px 0 0;font-weight:600}
+.day:first-child{margin-top:0}
+.sum2{display:flex;gap:8px;margin-bottom:10px}
+.sum2>div{flex:1;background:var(--bg);border-radius:10px;padding:10px;font-size:12px;color:var(--sub)}
+.sum2 b{display:block;font-size:16px;color:var(--ink);margin-top:2px}
+.sum2 .hl{background:#e3efe9}
+.fx{cursor:pointer}
+.fxl{display:flex;align-items:center;gap:10px}
+.ck{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;flex:none}
+.fx.done .ck{background:var(--accent);border-color:var(--accent)}
+.fx.done .nm,.fx.done .am{color:var(--sub)}
+.fx.done .nm{text-decoration:line-through}
+input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px;background:#fbfaf7;color:var(--ink);margin-bottom:8px}
+label{display:block;font-size:12px;color:var(--sub);margin:0 0 4px 2px}
+.row2{display:flex;gap:8px}
+.row2>*{flex:1}
+.btn{width:100%;padding:13px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-size:15px;font-weight:600;margin-top:6px}
+.btn.ghost{background:#eee9df;color:var(--ink)}
+.btn.danger{background:none;color:var(--red);border:1px solid var(--red)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;padding:14px 0;font-size:14px;color:var(--sub)}
+nav button.on{color:var(--accent);font-weight:700}
+.fab{position:fixed;right:18px;bottom:78px;width:58px;height:58px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-size:30px;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-end;z-index:10}
+.sheet.show{display:flex}
+.panel{background:#fff;width:100%;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+.st{font-size:17px;margin-bottom:14px}
+.seg{display:flex;background:#eee9df;border-radius:10px;padding:3px;margin-bottom:12px}
+.seg button{flex:1;border:0;background:none;padding:9px;border-radius:8px;font-size:14px;color:var(--ink)}
+.seg button.on{background:#fff;font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
+.chip{border:1px solid var(--line);background:#fbfaf7;border-radius:20px;padding:8px 12px;font-size:13px;color:var(--ink)}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.amt{font-size:26px;font-weight:700;text-align:right}
+.sy{font-size:11px;opacity:.75;margin-top:10px;text-align:right}
+.sy:empty{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="mnav"><button onclick="movePeriod(-1)">‹</button><span id="plabel"></span><button onclick="movePeriod(1)">›</button></div>
+  <div class="lbl">고정지출 빼고 남은 돈</div>
+  <div class="big" id="remain"></div>
+  <div class="pills">
+    <div class="pill">시작 잔고<b id="pStart"></b></div>
+    <div class="pill">고정지출<b id="pFixed"></b></div>
+    <div class="pill">이번 기간 지출<b id="pSpent"></b></div>
+  </div>
+  <div class="sy" id="syncSt"></div>
+</header>
+<main id="view"></main>
+<button class="fab" onclick="openSheet()">+</button>
+<nav>
+  <button id="t-home" onclick="go('home')">요약</button>
+  <button id="t-list" onclick="go('list')">내역</button>
+  <button id="t-set" onclick="go('set')">설정</button>
+</nav>
+
+<!-- 지출/수입 추가·수정 창 -->
+<div class="sheet" id="sheet" onclick="if(event.target===this)closeSheet()">
+  <div class="panel">
+    <h3 class="st" id="sTitle">기록 추가</h3>
+    <div class="seg"><button id="sOut" onclick="setType('out')">지출</button><button id="sIn" onclick="setType('in')">수입</button></div>
+    <input id="fAmt" class="amt" inputmode="numeric" placeholder="0원" oninput="fmt(this)">
+    <div class="chips" id="fCats"></div>
+    <input id="fMemo" placeholder="메모 (예: 점심 김밥)">
+    <input id="fDate" type="date">
+    <button class="btn" onclick="saveTx()">저장</button>
+    <button class="btn danger" id="fDel" onclick="delTx()">삭제</button>
+    <button class="btn ghost" onclick="closeSheet()">취소</button>
+  </div>
+</div>
+
+<!-- 고정지출 추가·수정 창 -->
+<div class="sheet" id="fxSheet" onclick="if(event.target===this)closeFx()">
+  <div class="panel">
+    <h3 class="st" id="xTitle">고정지출 추가</h3>
+    <label>항목</label><input id="xName" placeholder="예: 넷플릭스">
+    <div class="row2">
+      <div><label>금액</label><input id="xAmt" inputmode="numeric" oninput="fmt(this)" placeholder="0"></div>
+      <div><label>출금일</label><input id="xDay" inputmode="numeric" placeholder="1~31"></div>
+    </div>
+    <label>표시 (선택)</label><input id="xNote" placeholder="예: 26~28일">
+    <button class="btn" onclick="saveFx()">저장</button>
+    <button class="btn danger" id="xDel" onclick="delFixed()">삭제</button>
+    <button class="btn ghost" onclick="closeFx()">취소</button>
+  </div>
+</div>
+
+<script>
+const KEY='my-gagyebu-v2';
+let START_DAY=1; // 예산 기간 시작일 (설정 탭에서 변경, 기록과 함께 저장됨)
+const OUT_CATS=['식비','카페·간식','교통','쇼핑','생활','문화·여가','의료','경조사','기타'];
+const IN_CATS=['월급','용돈','환급','기타수입'];
+
+const pad=n=>String(n).padStart(2,'0');
+const won=n=>(n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString('ko-KR')+'원';
+const num=s=>Number(String(s).replace(/[^\d]/g,''))||0;
+const today=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};
+const $=id=>document.getElementById(id);
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fmt(el){const n=num(el.value);el.value=n?n.toLocaleString('ko-KR'):''}
+
+// ---- 예산 기간 계산 ----
+function periodOf(date){let[y,m,d]=date.split('-').map(Number);if(d<START_DAY){m--;if(m<1){m=12;y--}}return `${y}-${pad(m)}-${pad(START_DAY)}`}
+function shiftPeriod(k,dir){let[y,m]=k.split('-').map(Number);m+=dir;if(m<1){m=12;y--}if(m>12){m=1;y++}return `${y}-${pad(m)}-${pad(START_DAY)}`}
+function periodLabel(k){const[y1,m1]=k.split('-').map(Number);const e=new Date(y1,m1,START_DAY-1);
+  return `${y1}년 ${m1}월 ${START_DAY}일 ~ ${e.getMonth()+1}월 ${e.getDate()}일`}
+function fixedDate(k,day){let[y,m]=k.split('-').map(Number);if(day<START_DAY){m++;if(m>12){m=1;y++}}
+  const last=new Date(y,m,0).getDate();return `${y}-${pad(m)}-${pad(Math.min(day,last))}`}
+function isDone(k,f){return f.done!==undefined?f.done:fixedDate(k,f.day)<=today()}
+const order=d=>d>=START_DAY?d-START_DAY:d+31;
+
+// ---- 저장 ----
+let tab='home',fType='out',fCat=OUT_CATS[0],editId=null,editFx=null;
+let S=load(); START_DAY=dayOf(S); S.cur=periodOf(today());
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.p)return s}catch(e){}return{p:{}}}
+// 시작일이 저장돼 있지 않은 예전 기록은 기간 이름(예: 2026-10-21)에서 읽어옴
+function dayOf(s){const k=Object.keys(s.p)[0];return s.day||(k?Number(k.slice(8)):1)}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장에 실패했어요. 백업을 먼저 받아두세요.')}
+  if(syncOn()){SY.dirty=true;saveSY();seq++;clearTimeout(pushTimer);pushTimer=setTimeout(push,800)}}
+
+function ensure(k){
+  if(S.p[k])return S.p[k];
+  const prev=Object.keys(S.p).filter(x=>x<k).sort().pop(),p=prev&&S.p[prev];
+  S.p[k]={start:p?p.start:null,fixed:(p?p.fixed:[]).map(({done,...f})=>({...f})),tx:[]};
+  return S.p[k]}
+function cur(){return ensure(S.cur)}
+function calc(k){const m=S.p[k];
+  const fixed=m.fixed.reduce((a,f)=>a+f.amt,0);
+  const spent=m.tx.filter(t=>t.type==='out').reduce((a,t)=>a+t.amt,0);
+  const inc=m.tx.filter(t=>t.type==='in').reduce((a,t)=>a+t.amt,0);
+  return{fixed,spent,inc,remain:(m.start||0)-fixed-spent+inc}}
+function findTx(id){for(const k in S.p){const i=S.p[k].tx.findIndex(t=>t.id===id);if(i>=0)return{k,i,t:S.p[k].tx[i]}}return null}
+
+function movePeriod(d){S.cur=shiftPeriod(S.cur,d);render()}
+function go(t){tab=t;render()}
+
+function render(){
+  const m=cur(),c=calc(S.cur);
+  $('plabel').textContent=periodLabel(S.cur);
+  $('remain').textContent=m.start===null?'잔고 미입력':won(c.remain);
+  $('remain').classList.toggle('neg',m.start!==null&&c.remain<0);
+  $('pStart').textContent=m.start===null?'-':won(m.start);
+  $('pFixed').textContent=won(c.fixed);
+  $('pSpent').textContent=won(c.spent);
+  ['home','list','set'].forEach(t=>$('t-'+t).classList.toggle('on',t===tab));
+  $('view').innerHTML=tab==='home'?home(m,c):tab==='list'?list(m):settings(m);
+}
+
+function sortedFixed(m){return m.fixed.map((f,i)=>({...f,i})).sort((a,b)=>order(a.day)-order(b.day))}
+function byDate(a,b){return b.date.localeCompare(a.date)||b.id-a.id}
+function txRow(t){return `<div class="item tap" onclick="openSheet(${t.id})"><div>${esc(t.memo||t.cat)}<small>${t.date.slice(5).replace('-','/')} · ${esc(t.cat)}</small></div>
+  <div style="display:flex;align-items:center"><span class="${t.type}">${t.type==='out'?'-':'+'}${won(t.amt)}</span><span class="chev">›</span></div></div>`}
+function dayLabel(d){const w='일월화수목금토'[new Date(d+'T00:00').getDay()];return `${Number(d.slice(5,7))}월 ${Number(d.slice(8))}일 (${w})`}
+
+function fixedCard(m){
+  const k=S.cur,list=sortedFixed(m);let done=0,left=0;
+  list.forEach(f=>isDone(k,f)?done+=f.amt:left+=f.amt);
+  return `<div class="card"><h2>고정지출 현황 (월급통장)</h2>
+  <div class="sum2"><div>빠져나감<b>${won(done)}</b></div><div class="hl">월급통장에 남아 있어야 할 돈<b>${won(left)}</b></div></div>
+  ${list.map(f=>{const d=isDone(k,f);return `<div class="item fx${d?' done':''}" onclick="toggleFixed(${f.i})">
+    <div class="fxl"><span class="ck">${d?'✓':''}</span><div><span class="nm">${esc(f.name)}</span><small>${esc(f.note||f.day+'일')}</small></div></div>
+    <span class="am">${won(f.amt)}</span></div>`}).join('')}
+  <p class="muted" style="margin-top:8px">출금일이 지나면 자동으로 체크돼요. 눌러서 바꿀 수 있고, 금액·날짜 수정은 설정 탭에서 해요.</p></div>`}
+
+function home(m,c){let h='';
+  if(m.start===null)h+=`<div class="card"><h2>이번 기간 시작 잔고를 입력해 주세요</h2>
+    <p class="muted">예: 월급 3,200,000원을 넣으면 고정지출을 뺀 남은 돈을 자동으로 계산해요.</p>
+    <button class="btn" onclick="go('set')">잔고 입력하러 가기</button></div>`;
+  h+=fixedCard(m);
+  const by={};m.tx.filter(t=>t.type==='out').forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amt);
+  const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
+  h+=`<div class="card"><h2>분야별 지출</h2>`;
+  if(!rows.length)h+=`<p class="muted">아직 기록된 지출이 없어요. 오른쪽 아래 + 를 눌러 기록해 보세요.</p>`;
+  rows.forEach(([k,v])=>{const p=c.spent?Math.round(v/c.spent*100):0;
+    h+=`<div class="bar"><div class="t"><span>${esc(k)}</span><span>${won(v)} · ${p}%</span></div>
+    <div class="tr"><div class="fl" style="width:${p}%"></div></div></div>`});
+  h+='</div>';
+  if(c.inc)h+=`<div class="card"><div class="item"><span>이번 기간 수입</span><span class="in">+${won(c.inc)}</span></div></div>`;
+  const recent=[...m.tx].sort(byDate).slice(0,5);
+  if(recent.length)h+=`<div class="card"><h2>최근 기록</h2>${recent.map(txRow).join('')}</div>`;
+  return h}
+
+function list(m){
+  if(!m.tx.length)return `<div class="card"><p class="muted">이 기간의 기록이 없어요.</p></div>`;
+  let h='<p class="muted" style="margin:0 4px 8px">기록을 누르면 수정하거나 삭제할 수 있어요.</p><div class="card">',last='';
+  [...m.tx].sort(byDate).forEach(t=>{if(t.date!==last){last=t.date;h+=`<div class="day">${dayLabel(t.date)}</div>`}h+=txRow(t)});
+  return h+'</div>'}
+
+function settings(m){
+  return `<div class="card"><h2>이번 기간 시작 잔고</h2>
+  <p class="muted" style="margin-bottom:10px">예: 월급 3,200,000원. 다음 기간에도 같은 금액이 자동으로 들어가요 (수정 가능).</p>
+  <input id="sStart" inputmode="numeric" oninput="fmt(this)" value="${m.start===null?'':m.start.toLocaleString('ko-KR')}" placeholder="예: 3,200,000">
+  <button class="btn" onclick="saveStart()">저장</button></div>
+
+  <div class="card"><h2>예산 기간 시작일</h2>
+  <p class="muted" style="margin-bottom:10px">월급날에 맞추면 편해요. 예: 21일이면 21일 ~ 다음 달 20일이 한 기간이에요.</p>
+  <div class="row2"><input id="sDay" inputmode="numeric" value="${START_DAY}" placeholder="1~28">
+  <button class="btn ghost" style="margin-top:0;margin-bottom:8px" onclick="saveDay()">변경</button></div></div>
+
+  <div class="card"><h2>고정지출 (합계 ${won(calc(S.cur).fixed)})</h2>
+  <p class="muted" style="margin-bottom:6px">항목을 누르면 수정하거나 삭제할 수 있어요.</p>
+  ${sortedFixed(m).map(f=>`<div class="item tap" onclick="openFx(${f.i})"><div>${esc(f.name)}<small>${esc(f.note||f.day+'일')}</small></div>
+    <div style="display:flex;align-items:center"><span class="out">-${won(f.amt)}</span><span class="chev">›</span></div></div>`).join('')
+    ||'<p class="muted">고정지출이 없어요.</p>'}
+  <button class="btn ghost" style="margin-top:12px" onclick="openFx()">+ 고정지출 추가</button>
+  <p class="muted" style="margin-top:10px">여기서 바꾼 내용은 이번 기간부터 적용되고, 다음 기간으로 이어져요.</p></div>
+
+  ${syncCard()}
+
+  <div class="card"><h2>백업</h2>
+  <p class="muted" style="margin-bottom:6px">${syncOn()?'구글 시트에도 저장되고 있어요. 그래도 가끔 백업 파일을 받아두면 더 안전해요.'
+    :'기록은 이 기기의 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업해 두세요.'}</p>
+  <button class="btn ghost" onclick="exportData()">백업 파일 저장</button>
+  <button class="btn ghost" onclick="$('imp').click()">백업 불러오기</button>
+  <input type="file" id="imp" accept=".json,application/json" style="display:none" onchange="importData(this)">
+  <button class="btn danger" onclick="resetAll()">모든 기록 삭제</button></div>`}
+
+function saveStart(){const v=$('sStart').value.trim();cur().start=v===''?null:num(v);save();tab='home';render()}
+// 시작일을 바꾸면 기존 기간의 잔고·고정지출은 같은 달로 옮기고, 기록은 날짜에 맞는 기간으로 다시 나눔
+function saveDay(){const d=num($('sDay').value);if(d<1||d>28)return alert('1~28 사이로 입력해 주세요');
+  if(d===START_DAY)return;
+  if(!confirm(`예산 기간을 매달 ${d}일부터로 바꿀까요?\n기록은 날짜에 맞는 기간으로 다시 나뉘어요.`))return;
+  const old=S.p;START_DAY=d;S.day=d;S.p={};
+  for(const k in old)S.p[k.slice(0,8)+pad(d)]={start:old[k].start,fixed:old[k].fixed,tx:[]};
+  for(const k in old)old[k].tx.forEach(t=>ensure(periodOf(t.date)).tx.push(t));
+  S.cur=periodOf(today());save();render()}
+function toggleFixed(i){const f=cur().fixed[i];f.done=!isDone(S.cur,f);save();render()}
+
+// ---- 고정지출 추가·수정 ----
+function openFx(i){
+  editFx=(i===undefined)?null:i;const f=editFx===null?null:cur().fixed[i];
+  $('xTitle').textContent=f?'고정지출 수정':'고정지출 추가';
+  $('xDel').style.display=f?'block':'none';
+  $('xName').value=f?f.name:'';
+  $('xAmt').value=f?f.amt.toLocaleString('ko-KR'):'';
+  $('xDay').value=f?f.day:'';
+  $('xNote').value=f&&f.note?f.note:'';
+  $('fxSheet').classList.add('show')}
+function closeFx(){$('fxSheet').classList.remove('show')}
+function saveFx(){
+  const name=$('xName').value.trim(),amt=num($('xAmt').value),day=num($('xDay').value),note=$('xNote').value.trim();
+  if(!name||!amt||day<1||day>31)return alert('항목, 금액, 출금일(1~31)을 입력해 주세요');
+  const m=cur();
+  if(editFx===null){const f={name,amt,day};if(note)f.note=note;m.fixed.push(f)}
+  else{const f=m.fixed[editFx];if(f.day!==day)delete f.done;
+    f.name=name;f.amt=amt;f.day=day;if(note)f.note=note;else delete f.note}
+  save();closeFx();render()}
+function delFixed(){if(editFx===null||!confirm('이 고정지출을 삭제할까요?'))return;
+  cur().fixed.splice(editFx,1);save();closeFx();render()}
+
+// ---- 지출/수입 추가·수정 ----
+function openSheet(id){
+  editId=id||null;const f=editId?findTx(editId):null;
+  if(editId&&!f)return;
+  $('sTitle').textContent=f?'기록 수정':'기록 추가';
+  $('fDel').style.display=f?'block':'none';
+  if(f){const t=f.t;setType(t.type,t.cat);$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=t.memo||'';$('fDate').value=t.date}
+  else{setType('out');$('fAmt').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
+  $('sheet').classList.add('show');
+  if(!f)setTimeout(()=>$('fAmt').focus(),100)}
+function closeSheet(){$('sheet').classList.remove('show')}
+function setType(t,cat){fType=t;const cats=t==='out'?OUT_CATS:IN_CATS;fCat=cats.includes(cat)?cat:cats[0];
+  $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');
+  $('fCats').innerHTML=cats.map(c=>`<button class="chip${c===fCat?' on':''}" onclick="pickCat(this,'${c}')">${c}</button>`).join('')}
+function pickCat(el,c){fCat=c;document.querySelectorAll('#fCats .chip').forEach(x=>x.classList.remove('on'));el.classList.add('on')}
+function saveTx(){const amt=num($('fAmt').value);if(!amt)return alert('금액을 입력해 주세요');
+  const date=$('fDate').value||today(),k=periodOf(date);
+  const rec={id:editId||Date.now(),type:fType,amt,cat:fCat,memo:$('fMemo').value.trim(),date};
+  if(editId){const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1)}
+  ensure(k).tx.push(rec);S.cur=k;save();closeSheet();render()}
+function delTx(){if(!editId||!confirm('이 기록을 삭제할까요?'))return;
+  const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1);save();closeSheet();render()}
+
+// ---- 백업 ----
+function exportData(){const b=new Blob([JSON.stringify(S)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='가계부백업_'+today()+'.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.p)throw 0;
+    if(confirm('지금 기록을 백업 내용으로 바꿀까요?')){S=d;START_DAY=dayOf(S);S.cur=periodOf(today());save();render()}}
+    catch(e){alert('올바른 백업 파일이 아니에요')}};r.readAsText(f);inp.value=''}
+function resetAll(){if(confirm('정말 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S={cur:periodOf(today()),day:START_DAY,p:{}};save();tab='home';render()}}
+
+// ---- 구글 시트 동기화 ----
+const SKEY='my-gagyebu-sync';
+const GUIDE_URL='https://github.com/Mano-lee/gagyebu#readme';
+// 기본으로 연결할 시트 (비밀번호 없이는 읽기·쓰기가 안 되므로 URL은 공개돼도 괜찮음)
+// 다른 사람은 설정 탭의 '내 구글 시트 따로 쓰기'에서 자기 시트 URL을 넣음
+const SYNC_URL='https://script.google.com/macros/s/AKfycbykb_FiLbUsY2S_mEpLFi7HCbLyWKh86CbAezHQjW1CSZTF21pOICXZtoov0G5RqHM6/exec';
+let SY=(()=>{try{return JSON.parse(localStorage.getItem(SKEY))||{}}catch(e){return{}}})();
+let syncState='',pushTimer=null,busy=false,seq=0;
+function saveSY(){try{localStorage.setItem(SKEY,JSON.stringify(SY))}catch(e){}}
+function syncOn(){return !!(SY.url&&SY.key)}
+function setSync(st){syncState=st;
+  $('syncSt').textContent=!syncOn()||!st?'':st==='ing'?'☁ 동기화 중…':st==='err'?'☁ 연결 안 됨 · 이 기기에 저장해 둠':'☁ 동기화됨 '+(SY.at||'');
+  if($('syncInfo'))$('syncInfo').textContent=syncInfo()}
+function syncInfo(){return syncState==='err'?'지금은 연결이 안 돼서 이 기기에만 저장해 두었어요. 다시 연결되면 자동으로 올라가요.'
+  :'연결됨 · 마지막 동기화 '+(SY.at||'-')}
+function stamp(){const d=new Date();SY.at=`${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;saveSY();setSync('ok')}
+async function api(body){
+  const r=body?await fetch(SY.url,{method:'POST',body:JSON.stringify({key:SY.key,...body})})
+    :await fetch(SY.url+'?key='+encodeURIComponent(SY.key));
+  const j=await r.json();if(j.error)throw new Error(j.error);return j}
+function adopt(j){const c=S.cur,d0=START_DAY;S=j.data&&j.data.p?j.data:{p:{}};START_DAY=dayOf(S);
+  S.cur=START_DAY===d0?c:periodOf(today());SY.ver=j.ver;SY.dirty=false;
+  try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}stamp();render()}
+
+async function push(force){
+  if(!syncOn())return;
+  if(busy){clearTimeout(pushTimer);pushTimer=setTimeout(()=>push(force),800);return}
+  busy=true;setSync('ing');const n=seq;let c=null;
+  try{const j=await api({base:SY.ver||0,data:S,force:!!force});
+    if(j.conflict)c=j;else{SY.ver=j.ver;if(n===seq)SY.dirty=false;stamp()}}
+  catch(e){setSync('err')}
+  busy=false;saveSY();
+  if(c){if(confirm('다른 기기에서 바뀐 내용이 있어요.\n\n[확인] 다른 기기 내용 불러오기 (이 기기에서 방금 바꾼 내용은 사라져요)\n[취소] 이 기기 내용으로 시트 덮어쓰기'))adopt(c);else push(true)}
+  else if(SY.dirty&&n!==seq)push()}
+
+async function pull(){
+  if(!syncOn()||busy)return;
+  if(SY.dirty)return push();
+  busy=true;setSync('ing');let j=null;
+  try{j=await api()}catch(e){setSync('err')}
+  busy=false;
+  if(!j)return;
+  if(SY.dirty||!j.data)return push();
+  if(j.ver!==SY.ver)adopt(j);else stamp()}
+
+async function connectSync(){
+  const url=$('cUrl').value.trim()||SYNC_URL,key=$('cKey').value.trim();
+  if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(url))return alert('웹 앱 URL을 확인해 주세요 (https://script.google.com/… 로 시작하고 /exec 로 끝나요)');
+  if(!key)return alert('비밀번호를 입력해 주세요');
+  SY={url,key};setSync('ing');let j;
+  try{j=await api()}catch(e){SY={};setSync('');
+    return alert(e.message==='auth'?'비밀번호가 맞지 않아요. Apps Script의 SECRET 값과 같은지 확인해 주세요.'
+      :'연결하지 못했어요. URL과 배포 설정(액세스 권한: 모든 사용자)을 확인해 주세요.')}
+  const hasLocal=Object.values(S.p).some(m=>m.tx.length||m.start!==null);
+  if(j.data&&(!hasLocal||confirm('시트에 이미 기록이 있어요.\n\n[확인] 시트 기록 불러오기\n[취소] 이 기기 기록으로 시트 덮어쓰기')))adopt(j);
+  else{SY.ver=j.ver;SY.dirty=true;seq++;saveSY();await push(true)}
+  render()}
+function disconnect(){if(!confirm('이 기기에서 구글 시트 연결을 끊을까요?\n기록은 이 기기와 시트에 그대로 남아 있어요.'))return;
+  SY={};saveSY();setSync('');render()}
+
+function syncCard(){
+  const h='<div class="card"><h2>폰·컴퓨터 같이 쓰기 (구글 시트)</h2>';
+  if(!syncOn())return h+`<p class="muted" style="margin-bottom:10px">구글 시트를 연결하면 폰과 컴퓨터의 기록이 자동으로 맞춰져요. 기기마다 한 번씩 연결해 주세요.</p>
+  <label>비밀번호</label><input id="cKey" type="password" placeholder="Apps Script에 적은 SECRET 값">
+  <details style="margin:4px 0 8px"><summary class="muted" style="cursor:pointer">내 구글 시트 따로 쓰기</summary>
+  <p class="muted" style="margin:8px 0">처음 쓰는 분은 <a href="${GUIDE_URL}" target="_blank">설정 방법</a>대로 내 시트를 만든 뒤, 웹 앱 URL을 여기에 넣어 주세요.</p>
+  <label>웹 앱 URL</label><input id="cUrl" placeholder="https://script.google.com/macros/s/…/exec"></details>
+  <button class="btn" onclick="connectSync()">연결하기</button></div>`;
+  return h+`<p class="muted" id="syncInfo" style="margin-bottom:6px">${syncInfo()}</p>
+  <button class="btn ghost" onclick="pull()">지금 동기화</button>
+  <button class="btn danger" onclick="disconnect()">연결 해제 (이 기기만)</button></div>`}
+
+render();
+if(syncOn()){setSync('');pull()}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull();else if(SY.dirty)push()});
+window.addEventListener('online',pull);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>

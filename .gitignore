@@ -1,0 +1,10 @@
+# 사이트에 필요한 파일만 올림 (백업 json, Apps Script 코드 등은 제외)
+*
+!.gitignore
+!index.html
+!manifest.webmanifest
+!sw.js
+!icon-192.png
+!icon-512.png
+!README.md
+!구글시트-동기화-코드.gs
