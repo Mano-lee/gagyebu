@@ -88,6 +88,9 @@ nav button.on{color:var(--accent);font-weight:700}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
 .chip{border:1px solid var(--line);background:#fbfaf7;border-radius:20px;padding:8px 12px;font-size:13px;color:var(--ink)}
 .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.chip.ed{display:inline-flex;align-items:center;gap:2px;padding:4px 4px 4px 12px}
+.chip.ed button{border:0;background:none;color:var(--sub);font-size:16px;line-height:1;padding:4px 6px}
+.ctl{font-size:13px;font-weight:600;margin:10px 0 2px}
 .sug{margin:-4px 0 8px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
 .sug:empty{display:none}
 .sug button{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;border:0;border-bottom:1px solid var(--line);background:none;padding:9px 12px;text-align:left;font-size:14px;color:var(--ink)}
@@ -209,6 +212,8 @@ const KEY='my-gagyebu-v2';
 let START_DAY=1; // 예산 기간 시작일 (설정 탭에서 변경, 기록과 함께 저장됨)
 const OUT_CATS=['식비','카페·간식','교통','쇼핑','생활','문화·여가','의료','경조사','기타'];
 const IN_CATS=['월급','용돈','환급','기타수입'];
+// 분야 목록: 설정 탭에서 바꾸면 S.cats에 저장돼서 다른 기기와도 같이 맞춰짐
+const catsOf=t=>(S.cats&&S.cats[t])||(t==='out'?OUT_CATS:IN_CATS);
 
 const pad=n=>String(n).padStart(2,'0');
 const won=n=>(n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString('ko-KR')+'원';
@@ -372,6 +377,13 @@ function settings(m){
   <button class="btn ghost" style="margin-top:12px" onclick="openFx()">+ 고정지출 추가</button>
   <p class="muted" style="margin-top:10px">여기서 바꾼 내용은 이번 기간부터 적용되고, 다음 기간으로 이어져요.</p></div>
 
+  <div class="card"><h2>분야</h2>
+  <p class="muted">기록할 때 고르는 분야예요. ×를 누르면 목록에서 빠지고, 이미 기록한 내역은 그대로 남아요.</p>
+  ${['out','in'].map(t=>`<div class="ctl">${t==='out'?'지출':'수입'}</div>
+  <div class="chips">${catsOf(t).map((c,i)=>`<span class="chip ed">${esc(c)}<button onclick="delCat('${t}',${i})" aria-label="${esc(c)} 빼기">×</button></span>`).join('')}</div>
+  <div class="row2"><input id="nc-${t}" placeholder="새 ${t==='out'?'지출':'수입'} 분야 (예: 반려동물)" maxlength="10" onkeydown="if(event.key==='Enter')addCat('${t}')">
+  <button class="btn ghost" style="margin-top:0;margin-bottom:8px;flex:0 0 80px" onclick="addCat('${t}')">추가</button></div>`).join('')}</div>
+
   ${syncCard()}
 
   <div class="card"><h2>백업</h2>
@@ -393,6 +405,15 @@ function saveDay(){const d=num($('sDay').value);if(d<1||d>28)return alert('1~28 
   S.cur=periodOf(today());save();render()}
 function saveCardDay(){const d=num($('sCard').value);if(d<1||d>31)return alert('1~31 사이로 입력해 주세요');
   S.cardDay=d;save();render()}
+// 새 분야는 '기타' 앞에 넣음
+function addCat(t){const n=$('nc-'+t).value.trim(),l=[...catsOf(t)];if(!n)return;
+  if(l.includes(n))return alert('이미 있는 분야예요');
+  const e=l.length&&l[l.length-1].startsWith('기타')?l.length-1:l.length;l.splice(e,0,n);
+  S.cats={...S.cats,[t]:l};save();render()}
+function delCat(t,i){const l=[...catsOf(t)];if(l.length<2)return alert('분야가 하나는 있어야 해요');
+  if(!confirm(`'${l[i]}' 분야를 목록에서 뺄까요?
+이미 기록한 내역은 그대로 남아요.`))return;
+  l.splice(i,1);S.cats={...S.cats,[t]:l};save();render()}
 function toggleFixed(i){const m=cur();if(i==='card')m.cardDone=!m.cardDone;else m.fixed[i].done=!m.fixed[i].done;save();render()}
 
 // ---- 고정지출 추가·수정 ----
@@ -428,14 +449,16 @@ function openSheet(id){
   hideSug();calcShow();$('sheet').classList.add('show');
   if(!f)setTimeout(()=>$('fAmt').focus(),100)}
 function closeSheet(){$('sheet').classList.remove('show')}
-function setType(t,cat){fType=t;const cats=t==='out'?OUT_CATS:IN_CATS;fCat=cats.includes(cat)?cat:cats[0];
+// 지운 분야로 된 예전 기록을 고칠 때는 그 분야도 목록 끝에 잠깐 보여줌
+let fCats=[];
+function setType(t,cat){fType=t;const cats=catsOf(t);fCats=cat&&!cats.includes(cat)?[...cats,cat]:cats;fCat=fCats.includes(cat)?cat:fCats[0];
   $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');$('fPay').style.display=t==='out'?'flex':'none';
-  $('fCats').innerHTML=cats.map(c=>`<button class="chip${c===fCat?' on':''}" onclick="pickCat(this,'${c}')">${c}</button>`).join('')}
+  $('fCats').innerHTML=fCats.map((c,i)=>`<button class="chip${c===fCat?' on':''}" onclick="pickCat(this,${i})">${esc(c)}</button>`).join('')}
 // 결제수단: 마지막에 고른 걸 이 기기에 기억해 둠
 const PKEY='my-gagyebu-pay';
 let fPay='chk',lastPay=(()=>{try{return localStorage.getItem(PKEY)||'chk'}catch(e){return'chk'}})();
 function setPay(p){fPay=p;$('pChk').classList.toggle('on',p==='chk');$('pCrd').classList.toggle('on',p==='credit')}
-function pickCat(el,c){fCat=c;document.querySelectorAll('#fCats .chip').forEach(x=>x.classList.remove('on'));el.classList.add('on')}
+function pickCat(el,i){fCat=fCats[i];document.querySelectorAll('#fCats .chip').forEach(x=>x.classList.remove('on'));el.classList.add('on')}
 function saveTx(){const amt=calcAmt();if(amt<=0)return alert('금액을 입력해 주세요');
   const memo=$('fMemo').value.trim();
   const date=$('fDate').value||today(),k=periodOf(date);
