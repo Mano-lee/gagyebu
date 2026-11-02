@@ -91,10 +91,52 @@ nav button.on{color:var(--accent);font-weight:700}
 .amt{font-size:26px;font-weight:700;text-align:right}
 .sy{font-size:11px;opacity:.75;margin-top:10px;text-align:right}
 .sy:empty{display:none}
+.brand,.fabt,.ca{display:none}
+
+/* ---- 데스크탑: 왼쪽 고정 패널 + 요약·내역 두 칸 ---- */
+@media (min-width:960px){
+  body{padding:0 0 0 300px}
+  .side{position:fixed;left:0;top:0;bottom:0;width:300px;background:var(--accent);color:#fff;display:flex;flex-direction:column;overflow-y:auto}
+  header{padding:28px 24px 8px}
+  .brand{display:block;font-size:18px;font-weight:700;margin-bottom:22px}
+  .mnav{background:rgba(255,255,255,.1);border-radius:12px;padding:4px}
+  .mnav button{padding:2px 10px;border-radius:8px;cursor:pointer}
+  .mnav button:hover{background:rgba(255,255,255,.14)}
+  .mnav span{font-size:13px}
+  .lbl{margin-top:22px}
+  .big{font-size:36px}
+  .pills{flex-direction:column;gap:6px;margin-top:18px}
+  .pill{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:12px}
+  .pill b{margin:0;font-size:15px}
+  .sy{text-align:left}
+  .fab{position:static;width:auto;height:auto;margin:14px 24px 6px;padding:13px;border-radius:12px;background:#fff;color:var(--accent);font-size:15px;font-weight:700;box-shadow:none;cursor:pointer}
+  .fab:hover{background:#eef5f2}
+  .fabt{display:inline}
+  nav{position:static;flex-direction:column;gap:2px;background:none;border:0;padding:10px 16px 24px}
+  nav button{flex:none;text-align:left;padding:11px 14px;border-radius:10px;color:rgba(255,255,255,.75);font-size:15px;cursor:pointer}
+  nav button:hover{background:rgba(255,255,255,.1)}
+  nav button.on{background:rgba(255,255,255,.18);color:#fff}
+  #t-list{display:none}
+  main{padding:28px 32px;max-width:1300px}
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+  .setg{column-count:2;column-gap:20px;max-width:980px}
+  .setg .card{break-inside:avoid}
+  .card{padding:20px}
+  .tap:hover,.fx:not(.due):hover{background:#faf8f3}
+  .cd{height:56px;flex-direction:column;gap:2px}
+  .cd.has:hover{background:#e8e2d5}
+  .cd.sel .ca{color:#fff}
+  .ca{display:block;font-size:10px;font-weight:600;color:var(--red)}
+  .btn,.seg button,.chip{cursor:pointer}
+  .sheet{align-items:center;justify-content:center}
+  .panel{width:440px;border-radius:20px;padding:24px;max-height:85vh}
+}
 </style>
 </head>
 <body>
+<aside class="side">
 <header>
+  <div class="brand">내 가계부</div>
   <div class="mnav"><button onclick="movePeriod(-1)">‹</button><span id="plabel"></span><button onclick="movePeriod(1)">›</button></div>
   <div class="lbl">고정지출 빼고 남은 돈</div>
   <div class="big" id="remain"></div>
@@ -105,13 +147,14 @@ nav button.on{color:var(--accent);font-weight:700}
   </div>
   <div class="sy" id="syncSt"></div>
 </header>
-<main id="view"></main>
-<button class="fab" onclick="openSheet()">+</button>
+<button class="fab" onclick="openSheet()">+<span class="fabt"> 기록 추가</span></button>
 <nav>
   <button id="t-home" onclick="go('home')">요약</button>
   <button id="t-list" onclick="go('list')">내역</button>
   <button id="t-set" onclick="go('set')">설정</button>
 </nav>
+</aside>
+<main id="view"></main>
 
 <!-- 지출/수입 추가·수정 창 -->
 <div class="sheet" id="sheet" onclick="if(event.target===this)closeSheet()">
@@ -193,6 +236,9 @@ function findTx(id){for(const k in S.p){const i=S.p[k].tx.findIndex(t=>t.id===id
 
 function movePeriod(d){S.cur=shiftPeriod(S.cur,d);selDay=null;render()}
 function go(t){tab=t;render()}
+// 넓은 화면(데스크탑)에서는 요약과 내역을 한 화면에 나란히 보여줌
+const wide=window.matchMedia('(min-width:960px)');
+wide.addEventListener('change',()=>render());
 
 function render(){
   const m=cur(),c=calc(S.cur);
@@ -202,8 +248,10 @@ function render(){
   $('pStart').textContent=m.start===null?'-':won(m.start);
   $('pFixed').textContent=won(c.fixed);
   $('pSpent').textContent=won(c.spent);
-  ['home','list','set'].forEach(t=>$('t-'+t).classList.toggle('on',t===tab));
-  $('view').innerHTML=tab==='home'?home(m,c):tab==='list'?list(m):settings(m);
+  const t=wide.matches&&tab==='list'?'home':tab;
+  ['home','list','set'].forEach(x=>$('t-'+x).classList.toggle('on',x===t));
+  $('view').innerHTML=t==='set'?settings(m):t==='list'?list(m)
+    :wide.matches?`<div class="cols"><div>${home(m,c)}</div><div>${list(m)}</div></div>`:home(m,c);
 }
 
 function sortedFixed(m){return m.fixed.map((f,i)=>({...f,i})).sort((a,b)=>order(a.day)-order(b.day))}
@@ -247,20 +295,20 @@ function home(m,c){let h='';
   const by={};m.tx.filter(t=>t.type==='out').forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amt);
   const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
   h+=`<div class="card"><h2>분야별 지출</h2>`;
-  if(!rows.length)h+=`<p class="muted">아직 기록된 지출이 없어요. 오른쪽 아래 + 를 눌러 기록해 보세요.</p>`;
+  if(!rows.length)h+=`<p class="muted">아직 기록된 지출이 없어요. + 버튼을 눌러 기록해 보세요.</p>`;
   rows.forEach(([k,v])=>{const p=c.spent?Math.round(v/c.spent*100):0;
     h+=`<div class="bar"><div class="t"><span>${esc(k)}</span><span>${won(v)} · ${p}%</span></div>
     <div class="tr"><div class="fl" style="width:${p}%"></div></div></div>`});
   h+='</div>';
   if(c.inc)h+=`<div class="card"><div class="item"><span>이번 기간 수입</span><span class="in">+${won(c.inc)}</span></div></div>`;
   const recent=[...m.tx].sort(byDate).slice(0,5);
-  if(recent.length)h+=`<div class="card"><h2>최근 기록</h2>${recent.map(txRow).join('')}</div>`;
+  if(recent.length&&!wide.matches)h+=`<div class="card"><h2>최근 기록</h2>${recent.map(txRow).join('')}</div>`;
   return h}
 
 // 예산 기간(시작일 ~ 다음 달 시작일 전날)을 달력으로 그림. 지출한 날만 굵게, 누를 수 있음
 function calendar(m){
   const[y,mo]=S.cur.split('-').map(Number),start=new Date(y,mo-1,START_DAY),end=new Date(y,mo,START_DAY);
-  const spent={};m.tx.forEach(t=>{if(t.type==='out')spent[t.date]=1});
+  const spent={};m.tx.forEach(t=>{if(t.type==='out')spent[t.date]=(spent[t.date]||0)+t.amt});
   let h='<div class="cal wk">'+[...'일월화수목금토'].map(w=>`<div class="cw">${w}</div>`).join('')+'</div>',mon=-1;
   for(const d=new Date(start);d<end;d.setDate(d.getDate()+1)){
     // 달이 바뀌면 'N월' 제목을 넣고 새 줄부터 시작
@@ -268,7 +316,8 @@ function calendar(m){
       h+=`<div class="cm">${mon+1}월</div><div class="cal">`+'<div></div>'.repeat(d.getDay())}
     const ds=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,lab=d.getDate();
     const cls=`cd${spent[ds]?' has':''}${ds===today()?' today':''}${ds===selDay?' sel':''}`;
-    h+=spent[ds]?`<button class="${cls}" onclick="pickDay('${ds}')">${lab}</button>`:`<div class="${cls}">${lab}</div>`}
+    // .ca(그날 쓴 금액)는 데스크탑에서만 보임
+    h+=spent[ds]?`<button class="${cls}" onclick="pickDay('${ds}')">${lab}<span class="ca">${spent[ds].toLocaleString('ko-KR')}</span></button>`:`<div class="${cls}">${lab}</div>`}
   return h+'</div>'}
 function pickDay(d){selDay=selDay===d?null:d;render()}
 
@@ -284,7 +333,7 @@ function list(m){
   return h+'</div>'}
 
 function settings(m){
-  return `<div class="card"><h2>이번 기간 시작 잔고</h2>
+  return `<div class="setg"><div class="card"><h2>이번 기간 시작 잔고</h2>
   <p class="muted" style="margin-bottom:10px">예: 월급 3,200,000원. 다음 기간에도 같은 금액이 자동으로 들어가요 (수정 가능).</p>
   <input id="sStart" inputmode="numeric" oninput="fmt(this)" value="${m.start===null?'':m.start.toLocaleString('ko-KR')}" placeholder="예: 3,200,000">
   <button class="btn" onclick="saveStart()">저장</button></div>
@@ -315,7 +364,7 @@ function settings(m){
   <button class="btn ghost" onclick="exportData()">백업 파일 저장</button>
   <button class="btn ghost" onclick="$('imp').click()">백업 불러오기</button>
   <input type="file" id="imp" accept=".json,application/json" style="display:none" onchange="importData(this)">
-  <button class="btn danger" onclick="resetAll()">모든 기록 삭제</button></div>`}
+  <button class="btn danger" onclick="resetAll()">모든 기록 삭제</button></div></div>`}
 
 function saveStart(){const v=$('sStart').value.trim();cur().start=v===''?null:num(v);save();tab='home';render()}
 // 시작일을 바꾸면 기존 기간의 잔고·고정지출은 같은 달로 옮기고, 기록은 날짜에 맞는 기간으로 다시 나눔
