@@ -119,6 +119,7 @@ nav button.on{color:var(--accent);font-weight:700}
     <h3 class="st" id="sTitle">기록 추가</h3>
     <div class="seg"><button id="sOut" onclick="setType('out')">지출</button><button id="sIn" onclick="setType('in')">수입</button></div>
     <input id="fAmt" class="amt" inputmode="numeric" placeholder="0원" oninput="fmt(this)">
+    <div class="seg" id="fPay"><button id="pChk" onclick="setPay('chk')">체크·현금</button><button id="pCrd" onclick="setPay('credit')">신용카드</button></div>
     <div class="chips" id="fCats"></div>
     <input id="fMemo" placeholder="메모 (예: 점심 김밥)">
     <input id="fDate" type="date">
@@ -207,12 +208,24 @@ function render(){
 
 function sortedFixed(m){return m.fixed.map((f,i)=>({...f,i})).sort((a,b)=>order(a.day)-order(b.day))}
 function byDate(a,b){return b.date.localeCompare(a.date)||b.id-a.id}
-function txRow(t){return `<div class="item tap" onclick="openSheet(${t.id})"><div>${esc(t.memo||t.cat)}<small>${t.date.slice(5).replace('-','/')} · ${esc(t.cat)}</small></div>
+function txRow(t){return `<div class="item tap" onclick="openSheet(${t.id})"><div>${esc(t.memo||t.cat)}<small>${t.date.slice(5).replace('-','/')} · ${esc(t.cat)}${t.pay==='credit'?' · 신용카드':''}</small></div>
   <div style="display:flex;align-items:center"><span class="${t.type}">${t.type==='out'?'-':'+'}${won(t.amt)}</span><span class="chev">›</span></div></div>`}
 function dayLabel(d){const w='일월화수목금토'[new Date(d+'T00:00').getDay()];return `${Number(d.slice(5,7))}월 ${Number(d.slice(8))}일 (${w})`}
 
+// ---- 신용카드 대금: 전월 1일~말일 사용분이 결제일에 출금 ----
+const cardDay=()=>S.cardDay||13;
+function creditSum(ym){let s=0;for(const k in S.p)S.p[k].tx.forEach(t=>{if(t.type==='out'&&t.pay==='credit'&&t.date.startsWith(ym))s+=t.amt});return s}
+const nextYm=(ym,dir)=>{let[y,m]=ym.split('-').map(Number);m+=dir;if(m<1){m=12;y--}if(m>12){m=1;y++}return `${y}-${pad(m)}`};
+// 예산 기간마다 결제일이 한 번 들어 있음 → 그 결제일에 나가는 대금(사용한 달 = 결제일의 전월)
+function cardBill(k){const ym=nextYm(fixedDate(k,cardDay()).slice(0,7),-1);return{ym,amt:creditSum(ym)}}
+
 function fixedCard(m){
-  const k=S.cur,list=sortedFixed(m);let done=0,left=0;
+  const k=S.cur,list=sortedFixed(m),bill=cardBill(k),now=today().slice(0,7);let done=0,left=0;
+  if(bill.amt||m.cardDone){list.push({name:`신용카드 대금 · ${Number(bill.ym.slice(5))}월 사용분${bill.ym>=now?' (집계 중)':''}`,
+    amt:bill.amt,day:cardDay(),done:!!m.cardDone,i:"'card'"});list.sort((a,b)=>order(a.day)-order(b.day))}
+  // 이번 달 신용카드 사용분이 다음 기간에 나가는 경우 미리 알려줌
+  const cm=creditSum(now),cmNote=S.cur===periodOf(today())&&cm&&bill.ym!==now
+    ?`<p class="muted" style="margin-top:8px">💳 이번 달(${Number(now.slice(5))}월) 신용카드 사용 <b>${won(cm)}</b> · ${Number(nextYm(now,1).slice(5))}월 ${cardDay()}일 출금 예정</p>`:'';
   let need=0;
   // 상태: wait(출금 전) → due(출금일 지남, 확인 전) → done(확인 완료)
   const rows=list.map(f=>{const n=daysLeft(k,f),st=f.done?'done':n<=0?'due':'wait';
@@ -223,6 +236,7 @@ function fixedCard(m){
     <div><span class="nm">${esc(f.name)}</span><small>${esc(f.note||f.day+'일')}${st==='due'?' · 확인 필요':st==='wait'?` · D-${n}`:''}</small></div>
     <div class="fxr"><span class="am">${won(f.amt)}</span>${st==='wait'?'<span class="ck off"></span>'
       :`<button class="ck" onclick="toggleFixed(${f.i})">${f.done?'✓':''}</button>`}</div></div>`).join('')}
+  ${cmNote}
   <p class="muted" style="margin-top:8px">출금일이 되면 오른쪽에 체크박스가 생겨요. 빠져나간 걸 확인하면 눌러 주세요. 금액·날짜 수정은 설정 탭에서 해요.</p></div>`}
 
 function home(m,c){let h='';
@@ -280,6 +294,11 @@ function settings(m){
   <div class="row2"><input id="sDay" inputmode="numeric" value="${START_DAY}" placeholder="1~28">
   <button class="btn ghost" style="margin-top:0;margin-bottom:8px" onclick="saveDay()">변경</button></div></div>
 
+  <div class="card"><h2>신용카드 결제일</h2>
+  <p class="muted" style="margin-bottom:10px">전월 1일~말일에 신용카드로 쓴 돈이 이 날 통장에서 빠져나가요. 요약 탭 고정지출 현황에 '신용카드 대금'으로 표시돼요.</p>
+  <div class="row2"><input id="sCard" inputmode="numeric" value="${cardDay()}" placeholder="1~31">
+  <button class="btn ghost" style="margin-top:0;margin-bottom:8px" onclick="saveCardDay()">변경</button></div></div>
+
   <div class="card"><h2>고정지출 (합계 ${won(calc(S.cur).fixed)})</h2>
   <p class="muted" style="margin-bottom:6px">항목을 누르면 수정하거나 삭제할 수 있어요.</p>
   ${sortedFixed(m).map(f=>`<div class="item tap" onclick="openFx(${f.i})"><div>${esc(f.name)}<small>${esc(f.note||f.day+'일')}</small></div>
@@ -307,7 +326,9 @@ function saveDay(){const d=num($('sDay').value);if(d<1||d>28)return alert('1~28 
   for(const k in old)S.p[k.slice(0,8)+pad(d)]={start:old[k].start,fixed:old[k].fixed,tx:[]};
   for(const k in old)old[k].tx.forEach(t=>ensure(periodOf(t.date)).tx.push(t));
   S.cur=periodOf(today());save();render()}
-function toggleFixed(i){const f=cur().fixed[i];f.done=!f.done;save();render()}
+function saveCardDay(){const d=num($('sCard').value);if(d<1||d>31)return alert('1~31 사이로 입력해 주세요');
+  S.cardDay=d;save();render()}
+function toggleFixed(i){const m=cur();if(i==='card')m.cardDone=!m.cardDone;else m.fixed[i].done=!m.fixed[i].done;save();render()}
 
 // ---- 고정지출 추가·수정 ----
 function openFx(i){
@@ -337,18 +358,23 @@ function openSheet(id){
   if(editId&&!f)return;
   $('sTitle').textContent=f?'기록 수정':'기록 추가';
   $('fDel').style.display=f?'block':'none';
-  if(f){const t=f.t;setType(t.type,t.cat);$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=t.memo||'';$('fDate').value=t.date}
-  else{setType('out');$('fAmt').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
+  if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=t.memo||'';$('fDate').value=t.date}
+  else{setType('out');setPay(lastPay);$('fAmt').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
   $('sheet').classList.add('show');
   if(!f)setTimeout(()=>$('fAmt').focus(),100)}
 function closeSheet(){$('sheet').classList.remove('show')}
 function setType(t,cat){fType=t;const cats=t==='out'?OUT_CATS:IN_CATS;fCat=cats.includes(cat)?cat:cats[0];
-  $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');
+  $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');$('fPay').style.display=t==='out'?'flex':'none';
   $('fCats').innerHTML=cats.map(c=>`<button class="chip${c===fCat?' on':''}" onclick="pickCat(this,'${c}')">${c}</button>`).join('')}
+// 결제수단: 마지막에 고른 걸 이 기기에 기억해 둠
+const PKEY='my-gagyebu-pay';
+let fPay='chk',lastPay=(()=>{try{return localStorage.getItem(PKEY)||'chk'}catch(e){return'chk'}})();
+function setPay(p){fPay=p;$('pChk').classList.toggle('on',p==='chk');$('pCrd').classList.toggle('on',p==='credit')}
 function pickCat(el,c){fCat=c;document.querySelectorAll('#fCats .chip').forEach(x=>x.classList.remove('on'));el.classList.add('on')}
 function saveTx(){const amt=num($('fAmt').value);if(!amt)return alert('금액을 입력해 주세요');
   const date=$('fDate').value||today(),k=periodOf(date);
   const rec={id:editId||Date.now(),type:fType,amt,cat:fCat,memo:$('fMemo').value.trim(),date};
+  if(fType==='out'){if(fPay==='credit')rec.pay='credit';lastPay=fPay;try{localStorage.setItem(PKEY,fPay)}catch(e){}}
   if(editId){const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1)}
   ensure(k).tx.push(rec);S.cur=k;save();closeSheet();render()}
 function delTx(){if(!editId||!confirm('이 기록을 삭제할까요?'))return;
