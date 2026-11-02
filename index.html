@@ -123,6 +123,7 @@ nav button.on{color:var(--accent);font-weight:700}
   .setg .card{break-inside:avoid}
   .card{padding:20px}
   .tap:hover,.fx:not(.due):hover{background:#faf8f3}
+  .txl{max-height:520px;overflow-y:auto;overscroll-behavior:contain;margin-right:-10px;padding-right:10px;scrollbar-width:thin;scrollbar-color:#d6d0c3 transparent}
   .cd{height:56px;flex-direction:column;gap:2px}
   .cd.has:hover{background:#e8e2d5}
   .cd.sel .ca{color:#fff}
@@ -328,9 +329,9 @@ function list(m){
     h+=`<div class="card"><div class="dh"><h2>${dayLabel(selDay)}</h2><span class="out">-${won(out)}</span></div>${day.map(txRow).join('')}</div>`}
   else if(m.tx.length)h+='<p class="muted" style="margin:0 4px 12px">굵은 날짜를 누르면 그날 쓴 내역이 여기에 보여요.</p>';
   if(!m.tx.length)return h+`<div class="card"><p class="muted">이 기간의 기록이 없어요.</p></div>`;
-  h+='<p class="muted" style="margin:0 4px 8px">기록을 누르면 수정하거나 삭제할 수 있어요.</p><div class="card"><h2>전체 내역</h2>';let last='';
+  h+=`<p class="muted" style="margin:0 4px 8px">기록을 누르면 수정하거나 삭제할 수 있어요.</p><div class="card"><h2>전체 내역 <span class="muted">${m.tx.length}건</span></h2><div class="txl">`;let last='';
   [...m.tx].sort(byDate).forEach(t=>{if(t.date!==last){last=t.date;h+=`<div class="day">${dayLabel(t.date)}</div>`}h+=txRow(t)});
-  return h+'</div>'}
+  return h+'</div></div>'}
 
 function settings(m){
   return `<div class="setg"><div class="card"><h2>이번 기간 시작 잔고</h2>
