@@ -88,6 +88,13 @@ nav button.on{color:var(--accent);font-weight:700}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
 .chip{border:1px solid var(--line);background:#fbfaf7;border-radius:20px;padding:8px 12px;font-size:13px;color:var(--ink)}
 .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.sug{margin:-4px 0 8px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.sug:empty{display:none}
+.sug button{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;border:0;border-bottom:1px solid var(--line);background:none;padding:9px 12px;text-align:left;font-size:14px;color:var(--ink)}
+.sug button:last-child{border-bottom:0}
+.sug button.on{background:var(--bg)}
+.sug small{display:block;color:var(--sub);font-size:11px;margin-top:2px}
+.sug .am{white-space:nowrap;font-weight:600}
 .amt{font-size:26px;font-weight:700;text-align:right}
 .sy{font-size:11px;opacity:.75;margin-top:10px;text-align:right}
 .sy:empty{display:none}
@@ -165,7 +172,8 @@ nav button.on{color:var(--accent);font-weight:700}
     <input id="fAmt" class="amt" inputmode="numeric" placeholder="0원" oninput="fmt(this)">
     <div class="seg" id="fPay"><button id="pChk" onclick="setPay('chk')">체크·현금</button><button id="pCrd" onclick="setPay('credit')">신용카드</button></div>
     <div class="chips" id="fCats"></div>
-    <input id="fMemo" placeholder="메모 (예: 점심 김밥)">
+    <input id="fMemo" placeholder="메모 (예: 점심 김밥)" autocomplete="off" oninput="suggest()" onfocus="suggest()" onblur="setTimeout(hideSug,150)" onkeydown="sugKey(event)">
+    <div class="sug" id="fSug"></div>
     <input id="fDate" type="date">
     <button class="btn" onclick="saveTx()">저장</button>
     <button class="btn danger" id="fDel" onclick="delTx()">삭제</button>
@@ -410,7 +418,7 @@ function openSheet(id){
   $('fDel').style.display=f?'block':'none';
   if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=t.memo||'';$('fDate').value=t.date}
   else{setType('out');setPay(lastPay);$('fAmt').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
-  $('sheet').classList.add('show');
+  hideSug();$('sheet').classList.add('show');
   if(!f)setTimeout(()=>$('fAmt').focus(),100)}
 function closeSheet(){$('sheet').classList.remove('show')}
 function setType(t,cat){fType=t;const cats=t==='out'?OUT_CATS:IN_CATS;fCat=cats.includes(cat)?cat:cats[0];
@@ -427,6 +435,29 @@ function saveTx(){const amt=num($('fAmt').value);if(!amt)return alert('금액을
   if(fType==='out'){if(fPay==='credit')rec.pay='credit';lastPay=fPay;try{localStorage.setItem(PKEY,fPay)}catch(e){}}
   if(editId){const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1)}
   ensure(k).tx.push(rec);S.cur=k;save();closeSheet();render()}
+// 메모 자동완성: 입력한 글자로 시작하는 예전 메모를 최근 순으로 보여줌
+let sugs=[],sugOn=-1;
+function suggest(){const q=$('fMemo').value.trim(),seen={};sugs=[];sugOn=-1;
+  if(q)for(const k in S.p)for(const t of S.p[k].tx){
+    if(t.type!==fType||!t.memo||!t.memo.startsWith(q))continue;
+    const o=seen[t.memo];
+    if(!o)sugs.push(seen[t.memo]={t,n:1});
+    else{o.n++;if(t.date>o.t.date||(t.date===o.t.date&&t.id>o.t.id))o.t=t}}
+  sugs=sugs.sort((a,b)=>b.t.date.localeCompare(a.t.date)).slice(0,6);
+  drawSug(q)}
+function drawSug(q){$('fSug').innerHTML=sugs.map(({t,n},i)=>`<button class="${i===sugOn?'on':''}" onmousedown="event.preventDefault()" onclick="useSug(${i})">
+  <div><b>${esc(q)}</b>${esc(t.memo.slice(q.length))}<small>${esc(t.cat)}${t.pay==='credit'?' · 신용카드':''} · 마지막 ${t.date.slice(5).replace('-','/')}${n>1?` · ${n}번`:''}</small></div>
+  <span class="am">${won(t.amt)}</span></button>`).join('')}
+function hideSug(){sugs=[];$('fSug').innerHTML=''}
+// 고르면 메모·분류·결제수단을 채우고, 금액은 비어 있을 때만 예전 금액으로 채움
+function useSug(i){const t=sugs[i].t;$('fMemo').value=t.memo;setType(fType,t.cat);
+  if(fType==='out')setPay(t.pay||'chk');
+  if(!num($('fAmt').value))$('fAmt').value=t.amt.toLocaleString('ko-KR');
+  hideSug()}
+function sugKey(e){if(!sugs.length||e.isComposing)return;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();sugOn=(sugOn+(e.key==='ArrowDown'?1:sugs.length-1+(sugOn<0?1:0)))%sugs.length;drawSug($('fMemo').value.trim())}
+  else if(e.key==='Enter'&&sugOn>=0){e.preventDefault();useSug(sugOn)}
+  else if(e.key==='Escape'){e.preventDefault();hideSug()}}
 function delTx(){if(!editId||!confirm('이 기록을 삭제할까요?'))return;
   const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1);save();closeSheet();render()}
 
