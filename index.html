@@ -31,6 +31,12 @@ main{padding:14px}
 .bar .t{display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px}
 .bar .tr{height:8px;background:#eee9df;border-radius:4px;overflow:hidden}
 .bar .fl{height:100%;background:var(--accent);border-radius:4px}
+.bar.tap{margin:0 -10px 4px;padding:8px 10px;border-radius:10px;cursor:pointer}
+.bar.tap.on{background:var(--bg);border-radius:10px 10px 0 0;margin-bottom:0}
+.bar .cv{display:inline-block;color:var(--sub);margin-left:6px;transition:transform .15s}
+.bar.on .cv{transform:rotate(90deg)}
+.catl{background:var(--bg);border-radius:0 0 10px 10px;margin:0 -10px 8px;padding:0 10px 4px}
+.catl .item:last-child{border-bottom:0}
 .item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px;gap:8px}
 .item:last-child{border-bottom:0}
 .item small{display:block;color:var(--sub);font-size:12px;margin-top:2px}
@@ -234,7 +240,7 @@ function daysLeft(k,f){return Math.round((new Date(fixedDate(k,f.day)+'T00:00')-
 const order=d=>d>=START_DAY?d-START_DAY:d+31;
 
 // ---- 저장 ----
-let tab='home',fType='out',fCat=OUT_CATS[0],editId=null,editFx=null,selDay=null;
+let tab='home',fType='out',fCat=OUT_CATS[0],editId=null,editFx=null,selDay=null,selCat=null;
 let S=load(); START_DAY=dayOf(S); S.cur=periodOf(today());
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.p)return s}catch(e){}return{p:{}}}
 // 시작일이 저장돼 있지 않은 예전 기록은 기간 이름(예: 2026-10-21)에서 읽어옴
@@ -255,7 +261,7 @@ function calc(k){const m=S.p[k];
   return{fixed,spent,inc,remain:(m.start||0)-fixed-spent+inc}}
 function findTx(id){for(const k in S.p){const i=S.p[k].tx.findIndex(t=>t.id===id);if(i>=0)return{k,i,t:S.p[k].tx[i]}}return null}
 
-function movePeriod(d){S.cur=shiftPeriod(S.cur,d);selDay=null;render()}
+function movePeriod(d){S.cur=shiftPeriod(S.cur,d);selDay=selCat=null;render()}
 function go(t){tab=t;render()}
 // 넓은 화면(데스크탑)에서는 요약과 내역을 한 화면에 나란히 보여줌
 const wide=window.matchMedia('(min-width:960px)');
@@ -315,11 +321,13 @@ function home(m,c){let h='';
   h+=fixedCard(m);
   const by={};m.tx.filter(t=>t.type==='out').forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amt);
   const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
-  h+=`<div class="card"><h2>분야별 지출</h2>`;
+  h+=`<div class="card"><h2>분야별 지출${rows.length?' <span class="muted">눌러서 내역 보기</span>':''}</h2>`;
   if(!rows.length)h+=`<p class="muted">아직 기록된 지출이 없어요. + 버튼을 눌러 기록해 보세요.</p>`;
   rows.forEach(([k,v])=>{const p=c.spent?Math.round(v/c.spent*100):0;
-    h+=`<div class="bar"><div class="t"><span>${esc(k)}</span><span>${won(v)} · ${p}%</span></div>
-    <div class="tr"><div class="fl" style="width:${p}%"></div></div></div>`});
+    const on=k===selCat;
+    h+=`<div class="bar tap${on?' on':''}" data-c="${esc(k)}" onclick="pickCatBar(this.dataset.c)"><div class="t"><span>${esc(k)}</span><span>${won(v)} · ${p}%<span class="cv">›</span></span></div>
+    <div class="tr"><div class="fl" style="width:${p}%"></div></div></div>`;
+    if(on)h+=`<div class="catl">${m.tx.filter(t=>t.type==='out'&&t.cat===k).sort(byDate).map(txRow).join('')}</div>`});
   h+='</div>';
   if(c.inc)h+=`<div class="card"><div class="item"><span>이번 기간 수입</span><span class="in">+${won(c.inc)}</span></div></div>`;
   const recent=[...m.tx].sort(byDate).slice(0,5);
@@ -340,6 +348,8 @@ function calendar(m){
     // .ca(그날 쓴 금액)는 데스크탑에서만 보임
     h+=spent[ds]?`<button class="${cls}" onclick="pickDay('${ds}')">${lab}<span class="ca">${spent[ds].toLocaleString('ko-KR')}</span></button>`:`<div class="${cls}">${lab}</div>`}
   return h+'</div>'}
+// 분야별 지출에서 분야를 누르면 그 분야 내역을 바로 아래에 펼침 (한 번 더 누르면 접힘)
+function pickCatBar(c){selCat=selCat===c?null:c;render()}
 function pickDay(d){selDay=selDay===d?null:d;render()}
 
 function list(m){
