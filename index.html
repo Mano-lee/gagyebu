@@ -423,9 +423,9 @@ function openSheet(id){
   if(editId&&!f)return;
   $('sTitle').textContent=f?'기록 수정':'기록 추가';
   $('fDel').style.display=f?'block':'none';
-  if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=t.memo||'';$('fDate').value=t.date}
+  if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=bare(t.memo||'');$('fDate').value=t.date}
   else{setType('out');setPay(lastPay);$('fAmt').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
-  hideSug();calcExpr='';calcShow();$('sheet').classList.add('show');
+  hideSug();calcShow();$('sheet').classList.add('show');
   if(!f)setTimeout(()=>$('fAmt').focus(),100)}
 function closeSheet(){$('sheet').classList.remove('show')}
 function setType(t,cat){fType=t;const cats=t==='out'?OUT_CATS:IN_CATS;fCat=cats.includes(cat)?cat:cats[0];
@@ -436,16 +436,16 @@ const PKEY='my-gagyebu-pay';
 let fPay='chk',lastPay=(()=>{try{return localStorage.getItem(PKEY)||'chk'}catch(e){return'chk'}})();
 function setPay(p){fPay=p;$('pChk').classList.toggle('on',p==='chk');$('pCrd').classList.toggle('on',p==='credit')}
 function pickCat(el,c){fCat=c;document.querySelectorAll('#fCats .chip').forEach(x=>x.classList.remove('on'));el.classList.add('on')}
-function saveTx(){const {amt,expr}=calcFinal();if(amt<=0)return alert('금액을 입력해 주세요');
-  let memo=$('fMemo').value.trim();if(expr)memo=(bare(memo)+' ['+expr+']').trim();
+function saveTx(){const amt=calcAmt();if(amt<=0)return alert('금액을 입력해 주세요');
+  const memo=$('fMemo').value.trim();
   const date=$('fDate').value||today(),k=periodOf(date);
   const rec={id:editId||Date.now(),type:fType,amt,cat:fCat,memo,date};
   if(fType==='out'){if(fPay==='credit')rec.pay='credit';lastPay=fPay;try{localStorage.setItem(PKEY,fPay)}catch(e){}}
   if(editId){const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1)}
   ensure(k).tx.push(rec);S.cur=k;save();closeSheet();render()}
-// 금액 칸 계산기: 금액 칸에 식(45,000 ÷ 3)을 그대로 쓰고, 저장하면 결과 금액과 함께 식을 메모 끝에 [ ]로 남김
-let calcExpr='',calcRes=0;
-const CALC_RE=/\s*\[[\d,+−×÷]+\]$/,bare=m=>m.replace(CALC_RE,'');
+// 금액 칸 계산기: 금액 칸에 식(45,000 ÷ 3)을 그대로 쓰고, 저장하면 결과 금액으로 저장
+// 예전에 메모 끝에 남기던 계산식 [45,000÷3]은 자동완성에서 빼고 보여주고, 수정 창을 열면 지워짐
+const bare=m=>m.replace(/\s*\[[\d,]+[+−×÷][\d,+−×÷]*\]$/,'');
 const hasOp=v=>/[+−×÷]/.test(v);
 function calcNorm(v){
   v=v.replace(/[*xX]/g,'×').replace(/\//g,'÷').replace(/[-–]/g,'−').replace(/[^\d+−×÷]/g,'')
@@ -462,11 +462,8 @@ function calcInput(){const el=$('fAmt');el.value=calcNorm(el.value);calcShow()}
 function calcOp(o){const el=$('fAmt');if(!el.value)return;el.value=calcNorm(el.value+o);calcShow()}
 function calcBack(){const el=$('fAmt');el.value=calcNorm(el.value.trimEnd().slice(0,-1));calcShow()}
 function calcEq(){const el=$('fAmt'),v=el.value;if(!hasOp(v))return;
-  calcRes=calcVal(v);calcExpr=v.replace(/\s|[+−×÷]$/g,'');el.value=calcRes>0?calcRes.toLocaleString('ko-KR'):'';calcShow()}
-// 저장할 때 쓸 금액과 식: 식이 남아 있으면 지금 계산하고, '='로 계산한 결과 그대로면 그 식을 씀
-function calcFinal(){const v=$('fAmt').value;
-  if(hasOp(v))return{amt:calcVal(v),expr:v.replace(/\s|[+−×÷]$/g,'')};
-  const amt=num(v);return{amt,expr:calcExpr&&amt===calcRes?calcExpr:''}}
+  const n=calcVal(v);el.value=n>0?n.toLocaleString('ko-KR'):'';calcShow()}
+const calcAmt=()=>calcVal($('fAmt').value);
 // 메모 자동완성: 입력한 글자가 들어간 예전 메모를 보여줌 (그 글자로 시작하는 것 먼저, 그다음 최근 순)
 let sugs=[],sugOn=-1;
 function suggest(){const q=$('fMemo').value.trim(),seen={};sugs=[];sugOn=-1;
@@ -485,7 +482,7 @@ function hideSug(){sugs=[];$('fSug').innerHTML=''}
 // 고르면 메모·분류·결제수단을 채우고, 금액은 비어 있을 때만 예전 금액으로 채움
 function useSug(i){const {t,m}=sugs[i];$('fMemo').value=m;setType(fType,t.cat);
   if(fType==='out')setPay(t.pay||'chk');
-  if(!calcFinal().amt){$('fAmt').value=t.amt.toLocaleString('ko-KR');calcShow()}
+  if(!calcAmt()){$('fAmt').value=t.amt.toLocaleString('ko-KR');calcShow()}
   hideSug()}
 function sugKey(e){if(!sugs.length||e.isComposing)return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();sugOn=(sugOn+(e.key==='ArrowDown'?1:sugs.length-1+(sugOn<0?1:0)))%sugs.length;drawSug($('fMemo').value.trim())}
