@@ -44,9 +44,9 @@ main{padding:14px}
 .sum2>div{flex:1;background:var(--bg);border-radius:10px;padding:10px;font-size:12px;color:var(--sub)}
 .sum2 b{display:block;font-size:16px;color:var(--ink);margin-top:2px}
 .sum2 .hl{background:#e3efe9}
-.fx{cursor:pointer}
-.fxl{display:flex;align-items:center;gap:10px}
-.ck{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;flex:none}
+.fxr{display:flex;align-items:center;gap:12px}
+.ck{width:26px;height:26px;border-radius:7px;border:2px solid #c9c2b3;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex:none;padding:0;cursor:pointer}
+.ck.off{visibility:hidden}
 .fx.done .ck{background:var(--accent);border-color:var(--accent)}
 .fx.done .nm,.fx.done .am{color:var(--sub)}
 .fx.done .nm{text-decoration:line-through}
@@ -148,7 +148,7 @@ function periodLabel(k){const[y1,m1]=k.split('-').map(Number);const e=new Date(y
   return `${y1}년 ${m1}월 ${START_DAY}일 ~ ${e.getMonth()+1}월 ${e.getDate()}일`}
 function fixedDate(k,day){let[y,m]=k.split('-').map(Number);if(day<START_DAY){m++;if(m>12){m=1;y++}}
   const last=new Date(y,m,0).getDate();return `${y}-${pad(m)}-${pad(Math.min(day,last))}`}
-function isDone(k,f){return f.done!==undefined?f.done:fixedDate(k,f.day)<=today()}
+function isDue(k,f){return fixedDate(k,f.day)<=today()}
 const order=d=>d>=START_DAY?d-START_DAY:d+31;
 
 // ---- 저장 ----
@@ -196,13 +196,14 @@ function dayLabel(d){const w='일월화수목금토'[new Date(d+'T00:00').getDay
 
 function fixedCard(m){
   const k=S.cur,list=sortedFixed(m);let done=0,left=0;
-  list.forEach(f=>isDone(k,f)?done+=f.amt:left+=f.amt);
+  list.forEach(f=>f.done?done+=f.amt:left+=f.amt);
   return `<div class="card"><h2>고정지출 현황 (월급통장)</h2>
   <div class="sum2"><div>빠져나감<b>${won(done)}</b></div><div class="hl">월급통장에 남아 있어야 할 돈<b>${won(left)}</b></div></div>
-  ${list.map(f=>{const d=isDone(k,f);return `<div class="item fx${d?' done':''}" onclick="toggleFixed(${f.i})">
-    <div class="fxl"><span class="ck">${d?'✓':''}</span><div><span class="nm">${esc(f.name)}</span><small>${esc(f.note||f.day+'일')}</small></div></div>
-    <span class="am">${won(f.amt)}</span></div>`}).join('')}
-  <p class="muted" style="margin-top:8px">출금일이 지나면 자동으로 체크돼요. 눌러서 바꿀 수 있고, 금액·날짜 수정은 설정 탭에서 해요.</p></div>`}
+  ${list.map(f=>`<div class="item fx${f.done?' done':''}">
+    <div><span class="nm">${esc(f.name)}</span><small>${esc(f.note||f.day+'일')}</small></div>
+    <div class="fxr"><span class="am">${won(f.amt)}</span>${isDue(k,f)||f.done
+      ?`<button class="ck" onclick="toggleFixed(${f.i})">${f.done?'✓':''}</button>`:'<span class="ck off"></span>'}</div></div>`).join('')}
+  <p class="muted" style="margin-top:8px">출금일이 되면 오른쪽에 체크박스가 생겨요. 빠져나간 걸 확인하면 눌러 주세요. 금액·날짜 수정은 설정 탭에서 해요.</p></div>`}
 
 function home(m,c){let h='';
   if(m.start===null)h+=`<div class="card"><h2>이번 기간 시작 잔고를 입력해 주세요</h2>
@@ -266,7 +267,7 @@ function saveDay(){const d=num($('sDay').value);if(d<1||d>28)return alert('1~28 
   for(const k in old)S.p[k.slice(0,8)+pad(d)]={start:old[k].start,fixed:old[k].fixed,tx:[]};
   for(const k in old)old[k].tx.forEach(t=>ensure(periodOf(t.date)).tx.push(t));
   S.cur=periodOf(today());save();render()}
-function toggleFixed(i){const f=cur().fixed[i];f.done=!isDone(S.cur,f);save();render()}
+function toggleFixed(i){const f=cur().fixed[i];f.done=!f.done;save();render()}
 
 // ---- 고정지출 추가·수정 ----
 function openFx(i){
