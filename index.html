@@ -110,6 +110,10 @@ nav button.on{color:var(--accent);font-weight:700}
 .ops{display:flex;gap:6px;margin-bottom:12px}
 .ops button{flex:1;border:1px solid var(--line);background:#fbfaf7;border-radius:10px;padding:6px 0;font-size:21px;line-height:1.2;color:var(--ink)}
 .ops .eq{background:#eee9df;font-weight:700}
+.dutch{width:100%;border:1px solid var(--line);background:#fbfaf7;border-radius:10px;padding:9px;font-size:13px;color:var(--ink);margin-bottom:12px;cursor:pointer}
+.dutch.on{background:#eee9df;font-weight:600;margin-bottom:8px}
+#fBackBox{display:none}
+#fBackBox.show{display:block}
 .backw{display:flex;align-items:center;gap:10px}
 .backw button{flex:none;margin-bottom:8px;border:1px solid var(--line);background:#eee9df;border-radius:10px;padding:12px 10px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
 .splits{display:flex;gap:6px;margin-bottom:10px}
@@ -192,9 +196,10 @@ nav button.on{color:var(--accent);font-weight:700}
     <input id="fAmt" class="amt" inputmode="numeric" placeholder="0원" autocomplete="off" onfocus="calcEl='fAmt'" oninput="calcInput('fAmt')" onkeydown="if(event.key==='Enter'){event.preventDefault();calcEq()}">
     <div class="calc" id="fCalc"></div>
     <div class="ops"><button onmousedown="event.preventDefault()" onclick="calcOp('+')">+</button><button onmousedown="event.preventDefault()" onclick="calcOp('−')">−</button><button onmousedown="event.preventDefault()" onclick="calcOp('×')">×</button><button onmousedown="event.preventDefault()" onclick="calcOp('÷')">÷</button><button class="eq" onmousedown="event.preventDefault()" onclick="calcEq()">=</button><button onmousedown="event.preventDefault()" onclick="calcBack()">⌫</button></div>
-    <div id="fBackW"><div class="backw"><button id="fBackL" onmousedown="event.preventDefault()" onclick="toggleBack()">돌려받은 돈 ⇄</button><input id="fBack" inputmode="numeric" placeholder="더치페이로 받은 돈" autocomplete="off" onfocus="calcEl='fBack'" oninput="calcInput('fBack')" onkeydown="if(event.key==='Enter'){event.preventDefault();calcEq()}"></div>
+    <div id="fBackW"><button class="dutch" id="fDutch" onmousedown="event.preventDefault()" onclick="showDutch(!dutchOn)">더치페이 ▾</button>
+    <div id="fBackBox"><div class="backw"><button id="fBackL" onmousedown="event.preventDefault()" onclick="toggleBack()">돌려받은 돈 ⇄</button><input id="fBack" inputmode="numeric" placeholder="더치페이로 받은 돈" autocomplete="off" onfocus="calcEl='fBack'" oninput="calcInput('fBack')" onkeydown="if(event.key==='Enter'){event.preventDefault();calcEq()}"></div>
     <div class="calc" id="fBackCalc"></div>
-    <div class="splits" id="fSplit"><button data-n="2" onmousedown="event.preventDefault()" onclick="splitBy(2)">2명</button><button data-n="3" onmousedown="event.preventDefault()" onclick="splitBy(3)">3명</button><button data-n="4" onmousedown="event.preventDefault()" onclick="splitBy(4)">4명</button><button data-n="5" onmousedown="event.preventDefault()" onclick="splitBy(5)">5명</button><button data-n="6" onmousedown="event.preventDefault()" onclick="splitBy(6)">6명</button></div></div>
+    <div class="splits" id="fSplit"><button data-n="2" onmousedown="event.preventDefault()" onclick="splitBy(2)">2명</button><button data-n="3" onmousedown="event.preventDefault()" onclick="splitBy(3)">3명</button><button data-n="4" onmousedown="event.preventDefault()" onclick="splitBy(4)">4명</button><button data-n="5" onmousedown="event.preventDefault()" onclick="splitBy(5)">5명</button><button data-n="6" onmousedown="event.preventDefault()" onclick="splitBy(6)">6명</button></div></div></div>
     <div class="seg" id="fPay"><button id="pChk" onclick="setPay('chk')">체크·현금</button><button id="pCrd" onclick="setPay('credit')">신용카드</button></div>
     <div class="chips" id="fCats"></div>
     <input id="fMemo" placeholder="메모 (예: 점심 김밥)" autocomplete="off" oninput="suggest()" onfocus="suggest()" onblur="setTimeout(hideSug,150)" onkeydown="sugKey(event)">
@@ -467,7 +472,7 @@ function openSheet(id){
   $('fDel').style.display=f?'block':'none';
   if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fBack').value=t.back?t.back.toLocaleString('ko-KR'):'';$('fMemo').value=bare(t.memo||'');$('fDate').value=t.date}
   else{setType('out');setPay(lastPay);$('fAmt').value='';$('fBack').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
-  hideSug();calcEl='fAmt';setSplit(0);setBackMode('back');calcShow();$('sheet').classList.add('show');
+  hideSug();calcEl='fAmt';setSplit(0);setBackMode('back');showDutch(!!$('fBack').value);calcShow();$('sheet').classList.add('show');
   if(!f)setTimeout(()=>$('fAmt').focus(),100)}
 function closeSheet(){$('sheet').classList.remove('show')}
 // 지운 분야로 된 예전 기록을 고칠 때는 그 분야도 목록 끝에 잠깐 보여줌
@@ -516,7 +521,10 @@ function calcEq(){const el=$(calcEl),v=el.value;if(!hasOp(v))return;
   const n=calcVal(v);el.value=n>0?n.toLocaleString('ko-KR'):'';calcDone()}
 const calcAmt=()=>calcVal($('fAmt').value);
 // 더치페이 칸: 돌려받은 돈을 쓰거나, 버튼으로 바꿔서 내가 쓴 돈을 쓸 수 있음. 저장은 항상 돌려받은 돈으로
-let backMode='back',splitN=0;
+let backMode='back',splitN=0,dutchOn=false;
+// 더치페이 버튼을 눌러야 칸이 펼쳐짐. 접으면 입력한 내용은 지워져서 저장되지 않음
+function showDutch(on){dutchOn=on;$('fBackBox').classList.toggle('show',on);$('fDutch').classList.toggle('on',on);$('fDutch').textContent='더치페이 '+(on?'▴':'▾');
+  if(!on){$('fBack').value='';setSplit(0);setBackMode('back');calcEl='fAmt';calcShow()}}
 function backAmt(){const v=$('fBack').value;if(!v)return 0;return backMode==='mine'?calcAmt()-calcVal(v):calcVal(v)}
 function setBackMode(m){backMode=m;const mine=m==='mine';$('fBackL').textContent=(mine?'내가 쓴 돈':'돌려받은 돈')+' ⇄';$('fBack').placeholder=mine?'내 몫 금액':'더치페이로 받은 돈'}
 function toggleBack(){const el=$('fBack');if(el.value)el.value=Math.max(calcAmt()-calcVal(el.value),0).toLocaleString('ko-KR');
