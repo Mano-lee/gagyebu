@@ -55,14 +55,15 @@ function writeList(data) {
   const names = { out: '지출', in: '수입' };
   const rows = [];
   Object.keys(data.p || {}).forEach(k => data.p[k].tx.forEach(t =>
-    rows.push([t.date, names[t.type] || t.type, t.cat, t.type === 'out' ? -t.amt : t.amt, "'" + (t.memo || '')])));
+    rows.push([t.date, names[t.type] || t.type, t.cat, t.type === 'out' ? -t.amt : t.amt, t.back || '',
+      t.type === 'out' ? -(t.amt - (t.back || 0)) : t.amt, "'" + (t.memo || '')])));
   rows.sort((a, b) => a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0);
   const sh = sheet('내역');
   sh.clearContents();
-  sh.getRange(1, 1, 1, 5).setValues([['날짜', '구분', '분류', '금액', '메모']]).setFontWeight('bold');
+  sh.getRange(1, 1, 1, 7).setValues([['날짜', '구분', '분류', '금액', '돌려받은 돈', '내 몫', '메모']]).setFontWeight('bold');
   sh.setFrozenRows(1);
   if (rows.length) {
-    sh.getRange(2, 1, rows.length, 5).setValues(rows);
-    sh.getRange(2, 4, rows.length, 1).setNumberFormat('#,##0');
+    sh.getRange(2, 1, rows.length, 7).setValues(rows);
+    sh.getRange(2, 4, rows.length, 3).setNumberFormat('#,##0');
   }
 }

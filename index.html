@@ -110,6 +110,9 @@ nav button.on{color:var(--accent);font-weight:700}
 .ops{display:flex;gap:6px;margin-bottom:12px}
 .ops button{flex:1;border:1px solid var(--line);background:#fbfaf7;border-radius:10px;padding:6px 0;font-size:21px;line-height:1.2;color:var(--ink)}
 .ops .eq{background:#eee9df;font-weight:700}
+.backw{display:flex;align-items:center;gap:10px}
+.backw label{flex:none;margin:0 0 8px 2px;font-size:13px}
+.backw input{text-align:right}
 .sy{font-size:11px;opacity:.75;margin-top:10px;text-align:right}
 .sy:empty{display:none}
 .brand,.fabt,.ca{display:none}
@@ -183,9 +186,11 @@ nav button.on{color:var(--accent);font-weight:700}
   <div class="panel">
     <h3 class="st" id="sTitle">기록 추가</h3>
     <div class="seg"><button id="sOut" onclick="setType('out')">지출</button><button id="sIn" onclick="setType('in')">수입</button></div>
-    <input id="fAmt" class="amt" inputmode="numeric" placeholder="0원" autocomplete="off" oninput="calcInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();calcEq()}">
+    <input id="fAmt" class="amt" inputmode="numeric" placeholder="0원" autocomplete="off" onfocus="calcEl='fAmt'" oninput="calcInput('fAmt')" onkeydown="if(event.key==='Enter'){event.preventDefault();calcEq()}">
     <div class="calc" id="fCalc"></div>
     <div class="ops"><button onmousedown="event.preventDefault()" onclick="calcOp('+')">+</button><button onmousedown="event.preventDefault()" onclick="calcOp('−')">−</button><button onmousedown="event.preventDefault()" onclick="calcOp('×')">×</button><button onmousedown="event.preventDefault()" onclick="calcOp('÷')">÷</button><button class="eq" onmousedown="event.preventDefault()" onclick="calcEq()">=</button><button onmousedown="event.preventDefault()" onclick="calcBack()">⌫</button></div>
+    <div id="fBackW"><div class="backw"><label for="fBack">돌려받은 돈</label><input id="fBack" inputmode="numeric" placeholder="더치페이로 받은 돈" autocomplete="off" onfocus="calcEl='fBack'" oninput="calcInput('fBack')" onkeydown="if(event.key==='Enter'){event.preventDefault();calcEq()}"></div>
+    <div class="calc" id="fBackCalc"></div></div>
     <div class="seg" id="fPay"><button id="pChk" onclick="setPay('chk')">체크·현금</button><button id="pCrd" onclick="setPay('credit')">신용카드</button></div>
     <div class="chips" id="fCats"></div>
     <input id="fMemo" placeholder="메모 (예: 점심 김밥)" autocomplete="off" oninput="suggest()" onfocus="suggest()" onblur="setTimeout(hideSug,150)" onkeydown="sugKey(event)">
@@ -254,9 +259,11 @@ function ensure(k){
   S.p[k]={start:p?p.start:null,fixed:(p?p.fixed:[]).map(({done,...f})=>({...f})),tx:[]};
   return S.p[k]}
 function cur(){return ensure(S.cur)}
+// 내가 실제로 쓴 돈: 결제 금액에서 더치페이로 돌려받은 돈을 뺀 금액 (카드 대금은 결제 금액 그대로)
+const net=t=>t.amt-(t.back||0);
 function calc(k){const m=S.p[k];
   const fixed=m.fixed.reduce((a,f)=>a+f.amt,0);
-  const spent=m.tx.filter(t=>t.type==='out').reduce((a,t)=>a+t.amt,0);
+  const spent=m.tx.filter(t=>t.type==='out').reduce((a,t)=>a+net(t),0);
   const inc=m.tx.filter(t=>t.type==='in').reduce((a,t)=>a+t.amt,0);
   return{fixed,spent,inc,remain:(m.start||0)-fixed-spent+inc}}
 function findTx(id){for(const k in S.p){const i=S.p[k].tx.findIndex(t=>t.id===id);if(i>=0)return{k,i,t:S.p[k].tx[i]}}return null}
@@ -283,8 +290,8 @@ function render(){
 
 function sortedFixed(m){return m.fixed.map((f,i)=>({...f,i})).sort((a,b)=>order(a.day)-order(b.day))}
 function byDate(a,b){return b.date.localeCompare(a.date)||b.id-a.id}
-function txRow(t){return `<div class="item tap" onclick="openSheet(${t.id})"><div>${esc(t.memo||t.cat)}<small>${t.date.slice(5).replace('-','/')} · ${esc(t.cat)}${t.pay==='credit'?' · 신용카드':''}</small></div>
-  <div style="display:flex;align-items:center"><span class="${t.type}">${t.type==='out'?'-':'+'}${won(t.amt)}</span><span class="chev">›</span></div></div>`}
+function txRow(t){return `<div class="item tap" onclick="openSheet(${t.id})"><div>${esc(t.memo||t.cat)}<small>${t.date.slice(5).replace('-','/')} · ${esc(t.cat)}${t.pay==='credit'?' · 신용카드':''}${t.back?` · ${won(t.amt)} 결제 · ${won(t.back)} 받음`:''}</small></div>
+  <div style="display:flex;align-items:center"><span class="${t.type}">${t.type==='in'?'+':net(t)?'-':''}${won(net(t))}</span><span class="chev">›</span></div></div>`}
 function dayLabel(d){const w='일월화수목금토'[new Date(d+'T00:00').getDay()];return `${Number(d.slice(5,7))}월 ${Number(d.slice(8))}일 (${w})`}
 
 // ---- 신용카드 대금: 전월 1일~말일 사용분이 결제일에 출금 ----
@@ -319,7 +326,7 @@ function home(m,c){let h='';
     <p class="muted">예: 월급 3,200,000원을 넣으면 고정지출을 뺀 남은 돈을 자동으로 계산해요.</p>
     <button class="btn" onclick="go('set')">잔고 입력하러 가기</button></div>`;
   h+=fixedCard(m);
-  const by={};m.tx.filter(t=>t.type==='out').forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amt);
+  const by={};m.tx.filter(t=>t.type==='out').forEach(t=>by[t.cat]=(by[t.cat]||0)+net(t));
   const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
   h+=`<div class="card"><h2>분야별 지출${rows.length?' <span class="muted">눌러서 내역 보기</span>':''}</h2>`;
   if(!rows.length)h+=`<p class="muted">아직 기록된 지출이 없어요. + 버튼을 눌러 기록해 보세요.</p>`;
@@ -337,16 +344,16 @@ function home(m,c){let h='';
 // 예산 기간(시작일 ~ 다음 달 시작일 전날)을 달력으로 그림. 지출한 날만 굵게, 누를 수 있음
 function calendar(m){
   const[y,mo]=S.cur.split('-').map(Number),start=new Date(y,mo-1,START_DAY),end=new Date(y,mo,START_DAY);
-  const spent={};m.tx.forEach(t=>{if(t.type==='out')spent[t.date]=(spent[t.date]||0)+t.amt});
+  const spent={};m.tx.forEach(t=>{if(t.type==='out')spent[t.date]=(spent[t.date]||0)+net(t)});
   let h='<div class="cal wk">'+[...'일월화수목금토'].map(w=>`<div class="cw">${w}</div>`).join('')+'</div>',mon=-1;
   for(const d=new Date(start);d<end;d.setDate(d.getDate()+1)){
     // 달이 바뀌면 'N월' 제목을 넣고 새 줄부터 시작
     if(d.getMonth()!==mon){if(mon>=0)h+='</div>';mon=d.getMonth();
       h+=`<div class="cm">${mon+1}월</div><div class="cal">`+'<div></div>'.repeat(d.getDay())}
     const ds=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,lab=d.getDate();
-    const cls=`cd${spent[ds]?' has':''}${ds===today()?' today':''}${ds===selDay?' sel':''}`;
+    const has=ds in spent,cls=`cd${has?' has':''}${ds===today()?' today':''}${ds===selDay?' sel':''}`;
     // .ca(그날 쓴 금액)는 데스크탑에서만 보임
-    h+=spent[ds]?`<button class="${cls}" onclick="pickDay('${ds}')">${lab}<span class="ca">${spent[ds].toLocaleString('ko-KR')}</span></button>`:`<div class="${cls}">${lab}</div>`}
+    h+=has?`<button class="${cls}" onclick="pickDay('${ds}')">${lab}<span class="ca">${spent[ds].toLocaleString('ko-KR')}</span></button>`:`<div class="${cls}">${lab}</div>`}
   return h+'</div>'}
 // 분야별 지출에서 분야를 누르면 그 분야 내역을 바로 아래에 펼침 (한 번 더 누르면 접힘)
 function pickCatBar(c){selCat=selCat===c?null:c;render()}
@@ -355,7 +362,7 @@ function pickDay(d){selDay=selDay===d?null:d;render()}
 function list(m){
   let h=`<div class="card">${calendar(m)}</div>`;
   const day=selDay?m.tx.filter(t=>t.date===selDay).sort(byDate):[];
-  if(day.length){const out=day.filter(t=>t.type==='out').reduce((a,t)=>a+t.amt,0);
+  if(day.length){const out=day.filter(t=>t.type==='out').reduce((a,t)=>a+net(t),0);
     h+=`<div class="card"><div class="dh"><h2>${dayLabel(selDay)}</h2><span class="out">-${won(out)}</span></div>${day.map(txRow).join('')}</div>`}
   else if(m.tx.length)h+='<p class="muted" style="margin:0 4px 12px">굵은 날짜를 누르면 그날 쓴 내역이 여기에 보여요.</p>';
   if(!m.tx.length)return h+`<div class="card"><p class="muted">이 기간의 기록이 없어요.</p></div>`;
@@ -454,15 +461,15 @@ function openSheet(id){
   if(editId&&!f)return;
   $('sTitle').textContent=f?'기록 수정':'기록 추가';
   $('fDel').style.display=f?'block':'none';
-  if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=bare(t.memo||'');$('fDate').value=t.date}
-  else{setType('out');setPay(lastPay);$('fAmt').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
-  hideSug();calcShow();$('sheet').classList.add('show');
+  if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fBack').value=t.back?t.back.toLocaleString('ko-KR'):'';$('fMemo').value=bare(t.memo||'');$('fDate').value=t.date}
+  else{setType('out');setPay(lastPay);$('fAmt').value='';$('fBack').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
+  hideSug();calcEl='fAmt';calcShow();$('sheet').classList.add('show');
   if(!f)setTimeout(()=>$('fAmt').focus(),100)}
 function closeSheet(){$('sheet').classList.remove('show')}
 // 지운 분야로 된 예전 기록을 고칠 때는 그 분야도 목록 끝에 잠깐 보여줌
 let fCats=[];
 function setType(t,cat){fType=t;const cats=catsOf(t);fCats=cat&&!cats.includes(cat)?[...cats,cat]:cats;fCat=fCats.includes(cat)?cat:fCats[0];
-  $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');$('fPay').style.display=t==='out'?'flex':'none';
+  $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');$('fPay').style.display=t==='out'?'flex':'none';$('fBackW').style.display=t==='out'?'block':'none';
   $('fCats').innerHTML=fCats.map((c,i)=>`<button class="chip${c===fCat?' on':''}" onclick="pickCat(this,${i})">${esc(c)}</button>`).join('')}
 // 결제수단: 마지막에 고른 걸 이 기기에 기억해 둠
 const PKEY='my-gagyebu-pay';
@@ -470,10 +477,11 @@ let fPay='chk',lastPay=(()=>{try{return localStorage.getItem(PKEY)||'chk'}catch(
 function setPay(p){fPay=p;$('pChk').classList.toggle('on',p==='chk');$('pCrd').classList.toggle('on',p==='credit')}
 function pickCat(el,i){fCat=fCats[i];document.querySelectorAll('#fCats .chip').forEach(x=>x.classList.remove('on'));el.classList.add('on')}
 function saveTx(){const amt=calcAmt();if(amt<=0)return alert('금액을 입력해 주세요');
+  const back=fType==='out'?backAmt():0;if(back>amt)return alert('돌려받은 돈이 결제 금액보다 많아요');
   const memo=$('fMemo').value.trim();
   const date=$('fDate').value||today(),k=periodOf(date);
   const rec={id:editId||Date.now(),type:fType,amt,cat:fCat,memo,date};
-  if(fType==='out'){if(fPay==='credit')rec.pay='credit';lastPay=fPay;try{localStorage.setItem(PKEY,fPay)}catch(e){}}
+  if(fType==='out'){if(fPay==='credit')rec.pay='credit';if(back)rec.back=back;lastPay=fPay;try{localStorage.setItem(PKEY,fPay)}catch(e){}}
   if(editId){const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1)}
   ensure(k).tx.push(rec);S.cur=k;save();closeSheet();render()}
 // 금액 칸 계산기: 금액 칸에 식(45,000 ÷ 3)을 그대로 쓰고, 저장하면 결과 금액으로 저장
@@ -490,13 +498,16 @@ function calcVal(v){const tk=String(v).replace(/[,\s]/g,'').replace(/[+−×÷]$
   for(let i=1;i<tk.length;i+=2){const op=tk[i],n=Number(tk[i+1]);
     if(op==='×')term*=n;else if(op==='÷')term=n?term/n:0;else{sum+=sign*term;sign=op==='+'?1:-1;term=n}}
   return Math.round(sum+sign*term)}
-function calcShow(){const v=$('fAmt').value;$('fCalc').textContent=hasOp(v)?'= '+won(calcVal(v)):''}
-function calcInput(){const el=$('fAmt');el.value=calcNorm(el.value);calcShow()}
-function calcOp(o){const el=$('fAmt');if(!el.value)return;el.value=calcNorm(el.value+o);calcShow()}
-function calcBack(){const el=$('fAmt');el.value=calcNorm(el.value.trimEnd().slice(0,-1));calcShow()}
-function calcEq(){const el=$('fAmt'),v=el.value;if(!hasOp(v))return;
+// 계산 버튼은 마지막으로 누른 칸(금액 또는 돌려받은 돈)에 입력됨
+let calcEl='fAmt';
+function calcShow(){const v=$('fAmt').value,b=$('fBack').value,n=calcVal(b);$('fCalc').textContent=hasOp(v)?'= '+won(calcVal(v)):'';
+  $('fBackCalc').textContent=n?(hasOp(b)?`= ${won(n)} · `:'')+'내 몫 '+won(calcVal(v)-n):''}
+function calcInput(id){const el=$(id);calcEl=id;el.value=calcNorm(el.value);calcShow()}
+function calcOp(o){const el=$(calcEl);if(!el.value)return;el.value=calcNorm(el.value+o);calcShow()}
+function calcBack(){const el=$(calcEl);el.value=calcNorm(el.value.trimEnd().slice(0,-1));calcShow()}
+function calcEq(){const el=$(calcEl),v=el.value;if(!hasOp(v))return;
   const n=calcVal(v);el.value=n>0?n.toLocaleString('ko-KR'):'';calcShow()}
-const calcAmt=()=>calcVal($('fAmt').value);
+const calcAmt=()=>calcVal($('fAmt').value),backAmt=()=>calcVal($('fBack').value);
 // 메모 자동완성: 입력한 글자가 들어간 예전 메모를 보여줌 (그 글자로 시작하는 것 먼저, 그다음 최근 순)
 let sugs=[],sugOn=-1;
 function suggest(){const q=$('fMemo').value.trim(),seen={};sugs=[];sugOn=-1;
