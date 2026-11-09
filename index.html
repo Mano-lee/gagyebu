@@ -579,8 +579,17 @@ const GUIDE_URL='https://github.com/Mano-lee/gagyebu#readme';
 // 다른 사람은 설정 탭의 '내 구글 시트 따로 쓰기'에서 자기 시트 URL을 넣음
 const SYNC_URL='https://script.google.com/macros/s/AKfycbykb_FiLbUsY2S_mEpLFi7HCbLyWKh86CbAezHQjW1CSZTF21pOICXZtoov0G5RqHM6/exec';
 let SY=(()=>{try{return JSON.parse(localStorage.getItem(SKEY))||{}}catch(e){return{}}})();
-let syncState='',pushTimer=null,busy=false,seq=0;
+let syncState='',pushTimer=null,busy=0,seq=0;
 function saveSY(){try{localStorage.setItem(SKEY,JSON.stringify(SY))}catch(e){}}
+// 마지막으로 시트와 맞춘 기록(SY.ver 시점). 두 기기가 따로 바꿨을 때 무엇이 바뀌었는지 가려내는 기준
+const BKEY='my-gagyebu-base';
+function getBase(){try{return JSON.parse(localStorage.getItem(BKEY))}catch(e){return null}}
+function setBase(str){try{localStorage.setItem(BKEY,str)}catch(e){}}
+// 보낸 기록의 지문. 응답을 못 받고 앱이 닫혀도, 다음에 시트 내용이 내가 보낸 것인지 알아볼 수 있음
+function hash(str){let a=0xdeadbeef,b=0x41c6ce57;
+  for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);a=Math.imul(a^c,2654435761);b=Math.imul(b^c,1597334677)}
+  a=Math.imul(a^(a>>>16),2246822507)^Math.imul(b^(b>>>13),3266489909);b=Math.imul(b^(b>>>16),2246822507)^Math.imul(a^(a>>>13),3266489909);
+  return(4294967296*(2097151&b)+(a>>>0)).toString(36)}
 function syncOn(){return !!(SY.url&&SY.key)}
 function setSync(st){syncState=st;
   $('syncSt').textContent=!syncOn()||!st?'':st==='ing'?'☁ 동기화 중…':st==='err'?'☁ 연결 안 됨 · 이 기기에 저장해 둠':'☁ 동기화됨 '+(SY.at||'');
@@ -588,34 +597,65 @@ function setSync(st){syncState=st;
 function syncInfo(){return syncState==='err'?'지금은 연결이 안 돼서 이 기기에만 저장해 두었어요. 다시 연결되면 자동으로 올라가요.'
   :'연결됨 · 마지막 동기화 '+(SY.at||'-')}
 function stamp(){const d=new Date();SY.at=`${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;saveSY();setSync('ok')}
-async function api(body){
-  const r=body?await fetch(SY.url,{method:'POST',body:JSON.stringify({key:SY.key,...body})})
+// 보내는 중에 앱을 닫아도 끝까지 전송되도록 keepalive 사용 (브라우저 제한 64KB 이하일 때만)
+async function api(body){const str=body&&JSON.stringify({key:SY.key,...body});
+  const r=body?await fetch(SY.url,{method:'POST',body:str,keepalive:str.length<60000})
     :await fetch(SY.url+'?key='+encodeURIComponent(SY.key));
   const j=await r.json();if(j.error)throw new Error(j.error);return j}
 function adopt(j){const c=S.cur,d0=START_DAY;S=j.data&&j.data.p?j.data:{p:{}};START_DAY=dayOf(S);
-  S.cur=START_DAY===d0?c:periodOf(today());SY.ver=j.ver;SY.dirty=false;
+  S.cur=START_DAY===d0?c:periodOf(today());SY.ver=j.ver;SY.dirty=false;SY.sent=[];if(j.data)setBase(JSON.stringify(j.data));
   try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}stamp();render()}
 
-async function push(force){
+// now: 앱을 닫는 순간처럼 기다릴 수 없을 때는 보내는 중이어도 바로 한 번 더 보냄
+async function push(force,now){
   if(!syncOn())return;
-  if(busy){clearTimeout(pushTimer);pushTimer=setTimeout(()=>push(force),800);return}
-  busy=true;setSync('ing');const n=seq;let c=null;
+  if(busy&&!now){clearTimeout(pushTimer);pushTimer=setTimeout(()=>push(force),800);return}
+  busy++;setSync('ing');const n=seq,sent=JSON.stringify(S);let c=null;
+  SY.sent=[...(SY.sent||[]).slice(-4),hash(sent)];saveSY();
   try{const j=await api({base:SY.ver||0,data:S,force:!!force});
-    if(j.conflict)c=j;else{SY.ver=j.ver;if(n===seq)SY.dirty=false;stamp()}}
+    if(j.conflict)c=j;else{SY.ver=j.ver;SY.sent=[];setBase(sent);if(n===seq)SY.dirty=false;stamp()}}
   catch(e){setSync('err')}
-  busy=false;saveSY();
-  if(c){if(confirm('다른 기기에서 바뀐 내용이 있어요.\n\n[확인] 다른 기기 내용 불러오기 (이 기기에서 방금 바꾼 내용은 사라져요)\n[취소] 이 기기 내용으로 시트 덮어쓰기'))adopt(c);else push(true)}
+  busy--;saveSY();
+  if(c)resolve(c);
   else if(SY.dirty&&n!==seq)push()}
+
+// 시트 버전이 이 기기가 알던 것과 다를 때
+function resolve(c){const rs=JSON.stringify(c.data),B=getBase();
+  // 1) 응답을 못 받았을 뿐 시트에 있는 건 이 기기가 보낸 내용 → 버전만 맞추고 남은 변경이 있으면 이어서 보냄
+  if((SY.sent||[]).includes(hash(rs))){SY.ver=c.ver;SY.sent=[];setBase(rs);
+    if(JSON.stringify(S)===rs){SY.dirty=false;saveSY();stamp()}else{saveSY();push()}return}
+  // 2) 두 기기가 따로 바꿈 → 각자 바꾼 것만 골라 합침
+  const m=B&&c.data&&dayOf(S)===dayOf(c.data)&&merge3(B,S,c.data);
+  if(m){S=m;SY.ver=c.ver;SY.sent=[];setBase(rs);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+    render();if(JSON.stringify(S)===rs){SY.dirty=false;saveSY();stamp()}else{SY.dirty=true;saveSY();push()}return}
+  // 3) 합칠 기준이 없으면(업데이트 직후 첫 충돌, 예산 기간 시작일 변경 등) 직접 고름
+  if(confirm('다른 기기에서 바뀐 내용이 있어요.\n\n[확인] 다른 기기 내용 불러오기 (이 기기에서 방금 바꾼 내용은 사라져요)\n[취소] 이 기기 내용으로 시트 덮어쓰기'))adopt(c);else push(true)}
+
+// B(마지막으로 맞춘 기록) 기준으로 L(이 기기)과 R(시트)에서 바뀐 것을 합침.
+// 기록은 id별로, 나머지 설정은 항목별로: 한쪽만 바꿨으면 바꾼 쪽, 둘 다 바꿨으면 이 기기 쪽
+function merge3(B,L,R){const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b),pick=(b,l,r)=>eq(l,b)?r:l,out={p:{}};
+  for(const k of new Set([...Object.keys(L),...Object.keys(R)]))if(k!=='p'){const v=k==='cur'?L.cur:pick(B[k],L[k],R[k]);if(v!==undefined)out[k]=v}
+  for(const k of new Set([...Object.keys(L.p),...Object.keys(R.p)])){const b=B.p&&B.p[k]||{},l=L.p[k],r=R.p[k],m={};
+    if(!l||!r){out.p[k]={...(l||r),tx:[]};continue}
+    for(const f of new Set([...Object.keys(l),...Object.keys(r)]))if(f!=='tx'){const v=pick(b[f],l[f],r[f]);if(v!==undefined)m[f]=v}
+    m.tx=[];out.p[k]=m}
+  const flat=s=>{const o={};for(const k in s.p||{})for(const t of s.p[k].tx)o[t.id]={k,t};return o};
+  const fb=flat(B),fl=flat(L),fr=flat(R);
+  for(const id of new Set([...Object.keys(fl),...Object.keys(fr)])){const b=fb[id],l=fl[id],r=fr[id];
+    // 새로 생김 → 넣음 / 한쪽에서 지움 → 다른 쪽이 안 고쳤으면 지움 / 둘 다 있음 → 바꾼 쪽
+    const x=!b?l||r:!l?(eq(r,b)?null:r):!r?(eq(l,b)?null:l):eq(l,b)?r:l;
+    if(x)out.p[x.k].tx.push(x.t)}
+  return out}
 
 async function pull(){
   if(!syncOn()||busy)return;
   if(SY.dirty)return push();
-  busy=true;setSync('ing');let j=null;
+  busy++;setSync('ing');let j=null;
   try{j=await api()}catch(e){setSync('err')}
-  busy=false;
+  busy--;
   if(!j)return;
   if(SY.dirty||!j.data)return push();
-  if(j.ver!==SY.ver)adopt(j);else stamp()}
+  if(j.ver!==SY.ver)adopt(j);else{if(!getBase())setBase(JSON.stringify(j.data));stamp()}}
 
 async function connectSync(){
   const url=$('cUrl').value.trim()||SYNC_URL,key=$('cKey').value.trim();
@@ -630,7 +670,7 @@ async function connectSync(){
   else{SY.ver=j.ver;SY.dirty=true;seq++;saveSY();await push(true)}
   render()}
 function disconnect(){if(!confirm('이 기기에서 구글 시트 연결을 끊을까요?\n기록은 이 기기와 시트에 그대로 남아 있어요.'))return;
-  SY={};saveSY();setSync('');render()}
+  SY={};saveSY();try{localStorage.removeItem(BKEY)}catch(e){}setSync('');render()}
 
 function syncCard(){
   const h='<div class="card"><h2>폰·컴퓨터 같이 쓰기 (구글 시트)</h2>';
@@ -646,7 +686,8 @@ function syncCard(){
 
 render();
 if(syncOn()){setSync('');pull()}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull();else if(SY.dirty)push()});
+// 앱을 내리거나 닫으면 기다리던 전송을 바로 보냄 (보내는 중이어도 한 번 더)
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull();else if(SY.dirty){clearTimeout(pushTimer);push(false,true)}});
 window.addEventListener('online',pull);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
