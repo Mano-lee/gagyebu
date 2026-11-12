@@ -20,6 +20,8 @@ header{background:var(--accent);color:#fff;padding:18px 18px 22px}
 .lbl{font-size:13px;opacity:.8;margin-top:14px}
 .big{font-size:34px;font-weight:700;margin-top:2px}
 .big.neg{color:#ffd2c8}
+.rnote{font-size:12px;opacity:.8;margin-top:2px}
+.rnote:empty{display:none}
 .pills{display:flex;gap:8px;margin-top:14px}
 .pill{flex:1;background:rgba(255,255,255,.14);border-radius:12px;padding:9px 10px;font-size:11px}
 .pill b{display:block;font-size:14px;margin-top:3px}
@@ -62,7 +64,10 @@ main{padding:14px}
 .cd.today{box-shadow:inset 0 0 0 2px var(--accent)}
 .cd.sel{background:var(--accent);color:#fff}
 .ca{display:block;font-size:9px;font-weight:600;line-height:1.15;letter-spacing:-.2px;white-space:nowrap}
-.ca.o{color:var(--red)}.ca.i{color:var(--accent)}
+.ca.o{color:var(--red)}.ca.i{color:var(--accent)}.ca.p{color:var(--sub)}
+.cd.pl{background:none;border:1px dashed #c9c2b3}
+.cd.pl.sel{background:var(--accent);border-color:var(--accent)}
+.plan{color:var(--sub);font-weight:600;white-space:nowrap}
 .cd.sel .ca{color:#fff}
 .dh{display:flex;justify-content:space-between;align-items:baseline}
 .fxr{display:flex;align-items:center;gap:12px}
@@ -175,6 +180,7 @@ nav button.on{color:var(--accent);font-weight:700}
   <div class="mnav"><button onclick="movePeriod(-1)">‹</button><span id="plabel"></span><button onclick="movePeriod(1)">›</button></div>
   <div class="lbl">고정지출 빼고 남은 돈</div>
   <div class="big" id="remain"></div>
+  <div class="rnote" id="rNote"></div>
   <div class="pills">
     <div class="pill">이번 기간 수입<b id="pInc"></b></div>
     <div class="pill">고정지출<b id="pFixed"></b></div>
@@ -195,7 +201,7 @@ nav button.on{color:var(--accent);font-weight:700}
 <div class="sheet" id="sheet" onclick="if(event.target===this)closeSheet()">
   <div class="panel">
     <h3 class="st" id="sTitle">기록 추가</h3>
-    <div class="seg"><button id="sOut" onclick="setType('out')">지출</button><button id="sIn" onclick="setType('in')">수입</button></div>
+    <div class="seg"><button id="sOut" onclick="setType('out')">지출</button><button id="sIn" onclick="setType('in')">수입</button><button id="sPlan" onclick="setType('plan')">예정</button></div>
     <input id="fAmt" class="amt" inputmode="numeric" placeholder="0원" autocomplete="off" onfocus="calcEl='fAmt'" oninput="calcInput('fAmt')" onkeydown="if(event.key==='Enter'){event.preventDefault();calcEq()}">
     <div class="calc" id="fCalc"></div>
     <div class="ops"><button onmousedown="event.preventDefault()" onclick="calcOp('+')">+</button><button onmousedown="event.preventDefault()" onclick="calcOp('−')">−</button><button onmousedown="event.preventDefault()" onclick="calcOp('×')">×</button><button onmousedown="event.preventDefault()" onclick="calcOp('÷')">÷</button><button class="eq" onmousedown="event.preventDefault()" onclick="calcEq()">=</button><button onmousedown="event.preventDefault()" onclick="calcBack()">⌫</button></div>
@@ -277,8 +283,11 @@ function calc(k){const m=S.p[k];
   const fixed=m.fixed.reduce((a,f)=>a+f.amt,0);
   const spent=m.tx.filter(t=>t.type==='out').reduce((a,t)=>a+net(t),0);
   const inc=m.tx.filter(t=>t.type==='in').reduce((a,t)=>a+t.amt,0);
-  return{fixed,spent,inc,remain:(m.start||0)-fixed-spent+inc}}
-function findTx(id){for(const k in S.p){const i=S.p[k].tx.findIndex(t=>t.id===id);if(i>=0)return{k,i,t:S.p[k].tx[i]}}return null}
+  // 예정 지출: 아직 안 쓴 돈이라 지출·분야별에는 안 넣고, 남은 돈에서만 미리 뺌
+  const planned=(m.plan||[]).reduce((a,t)=>a+t.amt,0);
+  return{fixed,spent,inc,planned,remain:(m.start||0)-fixed-spent+inc-planned}}
+// 기록(tx)과 예정 지출(plan)을 함께 찾음. a = 들어 있는 목록 이름
+function findTx(id){for(const k in S.p)for(const a of ['tx','plan']){const l=S.p[k][a]||[],i=l.findIndex(t=>t.id===id);if(i>=0)return{k,i,a,t:l[i]}}return null}
 
 function movePeriod(d){S.cur=shiftPeriod(S.cur,d);selDay=selCat=null;render()}
 function go(t){tab=t;render()}
@@ -291,6 +300,7 @@ function render(){
   $('plabel').textContent=periodLabel(S.cur);
   $('remain').textContent=m.start===null?'잔고 미입력':won(c.remain);
   $('remain').classList.toggle('neg',m.start!==null&&c.remain<0);
+  $('rNote').textContent=c.planned?`예정 지출 ${won(c.planned)}도 미리 뺐어요`:'';
   // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록. 수입 기록이 있으면 그 합계를 아래에 작게
   $('pInc').innerHTML=won((m.start||0)+c.inc)+(c.inc?`<small>월급 외 +${won(c.inc)}</small>`:'');
   $('pFixed').textContent=won(c.fixed);
@@ -303,7 +313,7 @@ function render(){
 
 function sortedFixed(m){return m.fixed.map((f,i)=>({...f,i})).sort((a,b)=>order(a.day)-order(b.day))}
 function byDate(a,b){return b.date.localeCompare(a.date)||b.id-a.id}
-function txRow(t){return `<div class="item tap" onclick="openSheet(${t.id})"><div>${esc(t.memo||t.cat)}<small>${t.date.slice(5).replace('-','/')} · ${esc(t.cat)}${t.pay==='credit'?' · 신용카드':''}${t.back?` · ${won(t.amt)} 결제 · ${won(t.back)} 받음`:''}</small></div>
+function txRow(t){return `<div class="item tap" onclick="openSheet(${t.id})"><div>${esc(t.memo||t.cat)}<small>${t.date.slice(5).replace('-','/')} · ${esc(t.cat)}${t.type==='plan'?' · 예정':''}${t.pay==='credit'?' · 신용카드':''}${t.back?` · ${won(t.amt)} 결제 · ${won(t.back)} 받음`:''}</small></div>
   <div style="display:flex;align-items:center"><span class="${t.type}">${t.type==='in'?'+':net(t)?'-':''}${won(net(t))}</span><span class="chev">›</span></div></div>`}
 function dayLabel(d){const w='일월화수목금토'[new Date(d+'T00:00').getDay()];return `${Number(d.slice(5,7))}월 ${Number(d.slice(8))}일 (${w})`}
 
@@ -334,11 +344,21 @@ function fixedCard(m){
   ${cmNote}
   <p class="muted" style="margin-top:8px">출금일이 되면 오른쪽에 체크박스가 생겨요. 빠져나간 걸 확인하면 눌러 주세요. 금액·날짜 수정은 설정 탭에서 해요.</p></div>`}
 
+// 예정 지출: 고정지출처럼 D-n → 날짜가 되면 '확인 필요' + 체크. 체크하면 지출로 확정하는 기록 창이 열림
+function planCard(m){const l=(m.plan||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);if(!l.length)return'';
+  let need=0,sum=0;
+  const rows=l.map(t=>{const n=Math.round((new Date(t.date+'T00:00')-new Date(today()+'T00:00'))/864e5),st=n<=0?'due':'wait';
+    if(st==='due')need++;sum+=t.amt;
+    return `<div class="item fx ${st} tap" onclick="openSheet(${t.id})"><div><span class="nm">${esc(t.memo||t.cat)}</span><small>${dayLabel(t.date)} · ${esc(t.cat)}${st==='due'?' · 확인 필요':` · D-${n}`}</small></div>
+    <div class="fxr"><span class="am">${won(t.amt)}</span>${st==='wait'?'<span class="ck off"></span>'
+      :`<button class="ck" onclick="event.stopPropagation();confirmPlan(${t.id})"></button>`}</div></div>`}).join('');
+  return `<div class="card"><h2>예정 지출 <span class="muted">합계 ${won(sum)}</span>${need?`<span class="badge">확인 필요 ${need}</span>`:''}</h2>${rows}
+  <p class="muted" style="margin-top:8px">날짜가 되면 체크박스가 생겨요. 누르면 실제 금액과 결제수단을 확인해서 지출로 저장해요. 안 쓰게 됐으면 항목을 눌러 삭제하세요.</p></div>`}
 function home(m,c){let h='';
   if(m.start===null)h+=`<div class="card"><h2>이번 기간 시작 잔고를 입력해 주세요</h2>
     <p class="muted">예: 월급 3,200,000원을 넣으면 고정지출을 뺀 남은 돈을 자동으로 계산해요.</p>
     <button class="btn" onclick="go('set')">잔고 입력하러 가기</button></div>`;
-  h+=fixedCard(m);
+  h+=fixedCard(m)+planCard(m);
   const by={};m.tx.filter(t=>t.type==='out').forEach(t=>by[t.cat]=(by[t.cat]||0)+net(t));
   const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
   h+=`<div class="card"><h2>분야별 지출${rows.length?' <span class="muted">눌러서 내역 보기</span>':''}</h2>`;
@@ -356,16 +376,17 @@ function home(m,c){let h='';
 // 예산 기간(시작일 ~ 다음 달 시작일 전날)을 달력으로 그림. 지출한 날만 굵게, 누를 수 있음
 function calendar(m){
   const[y,mo]=S.cur.split('-').map(Number),start=new Date(y,mo-1,START_DAY),end=new Date(y,mo,START_DAY);
-  const out={},inc={};m.tx.forEach(t=>{const o=t.type==='out'?out:inc;o[t.date]=(o[t.date]||0)+(t.type==='out'?net(t):t.amt)});
+  const out={},inc={},pl={};m.tx.forEach(t=>{const o=t.type==='out'?out:inc;o[t.date]=(o[t.date]||0)+(t.type==='out'?net(t):t.amt)});
+  (m.plan||[]).forEach(t=>pl[t.date]=(pl[t.date]||0)+t.amt);
   let h='<div class="cal wk">'+[...'일월화수목금토'].map(w=>`<div class="cw">${w}</div>`).join('')+'</div>',mon=-1;
   for(const d=new Date(start);d<end;d.setDate(d.getDate()+1)){
     // 달이 바뀌면 'N월' 제목을 넣고 새 줄부터 시작
     if(d.getMonth()!==mon){if(mon>=0)h+='</div>';mon=d.getMonth();
       h+=`<div class="cm">${mon+1}월</div><div class="cal">`+'<div></div>'.repeat(d.getDay())}
     const ds=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,lab=d.getDate();
-    const has=ds in out||ds in inc,cls=`cd${has?' has':''}${ds===today()?' today':''}${ds===selDay?' sel':''}`;
+    const done=ds in out||ds in inc,has=done||ds in pl,cls=`cd${has?' has':''}${has&&!done?' pl':''}${ds===today()?' today':''}${ds===selDay?' sel':''}`;
     // 날짜 아래 작게: 쓴 돈(빨강), 들어온 돈(초록 +)
-    h+=has?`<button class="${cls}" onclick="pickDay('${ds}')">${lab}${out[ds]?`<span class="ca o">${calAmt(out[ds])}</span>`:''}${inc[ds]?`<span class="ca i">+${calAmt(inc[ds])}</span>`:''}</button>`:`<div class="${cls}">${lab}</div>`}
+    h+=has?`<button class="${cls}" onclick="pickDay('${ds}')">${lab}${out[ds]?`<span class="ca o">${calAmt(out[ds])}</span>`:''}${inc[ds]?`<span class="ca i">+${calAmt(inc[ds])}</span>`:''}${pl[ds]?`<span class="ca p">예정 ${calAmt(pl[ds])}</span>`:''}</button>`:`<div class="${cls}">${lab}</div>`}
   return h+'</div>'}
 // 달력 칸이 좁은 폰에서는 1만 원 이상을 '2.1만'처럼 줄여 씀
 function calAmt(n){if(wide.matches||n<10000)return n.toLocaleString('ko-KR');const v=n/10000;return(v<10?Math.round(v*10)/10:Math.round(v))+'만'}
@@ -375,9 +396,10 @@ function pickDay(d){selDay=selDay===d?null:d;render()}
 
 function list(m){
   let h=`<div class="card">${calendar(m)}</div>`;
-  const day=selDay?m.tx.filter(t=>t.date===selDay).sort(byDate):[];
-  if(day.length){const out=day.filter(t=>t.type==='out').reduce((a,t)=>a+net(t),0),inc=day.filter(t=>t.type==='in').reduce((a,t)=>a+t.amt,0);
-    h+=`<div class="card"><div class="dh"><h2>${dayLabel(selDay)}</h2><span>${out||!inc?`<span class="out">-${won(out)}</span>`:''}${inc?` <span class="in">+${won(inc)}</span>`:''}</span></div>${day.map(txRow).join('')}</div>`}
+  const day=selDay?m.tx.filter(t=>t.date===selDay).sort(byDate):[],dp=selDay?(m.plan||[]).filter(t=>t.date===selDay):[];
+  if(day.length||dp.length){const out=day.filter(t=>t.type==='out').reduce((a,t)=>a+net(t),0),inc=day.filter(t=>t.type==='in').reduce((a,t)=>a+t.amt,0),
+    pls=dp.reduce((a,t)=>a+t.amt,0);
+    h+=`<div class="card"><div class="dh"><h2>${dayLabel(selDay)}</h2><span>${day.length&&(out||!inc)?`<span class="out">-${won(out)}</span>`:''}${inc?` <span class="in">+${won(inc)}</span>`:''}${pls?` <span class="plan">예정 -${won(pls)}</span>`:''}</span></div>${day.map(txRow).join('')}${dp.map(txRow).join('')}</div>`}
   else if(m.tx.length)h+='<p class="muted" style="margin:0 4px 12px">굵은 날짜를 누르면 그날 내역이 여기에 보여요.</p>';
   if(!m.tx.length)return h+`<div class="card"><p class="muted">이 기간의 기록이 없어요.</p></div>`;
   h+=`<p class="muted" style="margin:0 4px 8px">기록을 누르면 수정하거나 삭제할 수 있어요.</p><div class="card"><h2>전체 내역 <span class="muted">${m.tx.length}건</span></h2><div class="txl">`;let last='';
@@ -433,6 +455,7 @@ function saveDay(){const d=num($('sDay').value);if(d<1||d>28)return alert('1~28 
   const old=S.p;START_DAY=d;S.day=d;S.p={};
   for(const k in old)S.p[k.slice(0,8)+pad(d)]={start:old[k].start,fixed:old[k].fixed,tx:[]};
   for(const k in old)old[k].tx.forEach(t=>ensure(periodOf(t.date)).tx.push(t));
+  for(const k in old)(old[k].plan||[]).forEach(t=>{const p=ensure(periodOf(t.date));(p.plan||(p.plan=[])).push(t)});
   S.cur=periodOf(today());save();render()}
 function saveCardDay(){const d=num($('sCard').value);if(d<1||d>31)return alert('1~31 사이로 입력해 주세요');
   S.cardDay=d;save();render()}
@@ -471,19 +494,24 @@ function delFixed(){if(editFx===null||!confirm('이 고정지출을 삭제할까
 
 // ---- 지출/수입 추가·수정 ----
 function openSheet(id){
-  editId=id||null;const f=editId?findTx(editId):null;
+  editId=id||null;fromPlan=null;const f=editId?findTx(editId):null;
   if(editId&&!f)return;
-  $('sTitle').textContent=f?'기록 수정':'기록 추가';
+  $('sTitle').textContent=f?(f.a==='plan'?'예정 지출 수정':'기록 수정'):'기록 추가';
   $('fDel').style.display=f?'block':'none';
   if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fBack').value=t.back?t.back.toLocaleString('ko-KR'):'';$('fMemo').value=bare(t.memo||'');$('fDate').value=t.date}
   else{setType('out');setPay(lastPay);$('fAmt').value='';$('fBack').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
   hideSug();calcEl='fAmt';setSplit(0);setBackMode('back');showDutch(!!$('fBack').value);calcShow();$('sheet').classList.add('show');
   if(!f)setTimeout(()=>$('fAmt').focus(),100)}
 function closeSheet(){$('sheet').classList.remove('show')}
+// 예정 지출 확정: 예정 내용으로 채운 지출 기록 창을 열고, 저장하면 예정에서 빠짐 (취소하면 예정 그대로)
+let fromPlan=null;
+function confirmPlan(id){const g=findTx(id);if(!g)return;const t=g.t;
+  openSheet();setType('out',t.cat);$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=t.memo||'';$('fDate').value=t.date;
+  fromPlan=id;$('sTitle').textContent='예정 지출 확정';calcShow()}
 // 지운 분야로 된 예전 기록을 고칠 때는 그 분야도 목록 끝에 잠깐 보여줌
 let fCats=[];
-function setType(t,cat){fType=t;const cats=catsOf(t);fCats=cat&&!cats.includes(cat)?[...cats,cat]:cats;fCat=fCats.includes(cat)?cat:fCats[0];
-  $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');$('fPay').style.display=t==='out'?'flex':'none';$('fBackW').style.display=t==='out'?'block':'none';
+function setType(t,cat){fType=t;const cats=catsOf(t==='plan'?'out':t);fCats=cat&&!cats.includes(cat)?[...cats,cat]:cats;fCat=fCats.includes(cat)?cat:fCats[0];
+  $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');$('sPlan').classList.toggle('on',t==='plan');$('fPay').style.display=t==='out'?'flex':'none';$('fBackW').style.display=t==='out'?'block':'none';
   $('fCats').innerHTML=fCats.map((c,i)=>`<button class="chip${c===fCat?' on':''}" onclick="pickCat(this,${i})">${esc(c)}</button>`).join('')}
 // 결제수단: 마지막에 고른 걸 이 기기에 기억해 둠
 const PKEY='my-gagyebu-pay';
@@ -497,8 +525,9 @@ function saveTx(){const amt=calcAmt();if(amt<=0)return alert('금액을 입력�
   const date=$('fDate').value||today(),k=periodOf(date);
   const rec={id:editId||Date.now(),type:fType,amt,cat:fCat,memo,date};
   if(fType==='out'){if(fPay==='credit')rec.pay='credit';if(back)rec.back=back;lastPay=fPay;try{localStorage.setItem(PKEY,fPay)}catch(e){}}
-  if(editId){const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1)}
-  ensure(k).tx.push(rec);S.cur=k;save();closeSheet();render()}
+  if(editId){const f=findTx(editId);if(f)S.p[f.k][f.a].splice(f.i,1)}
+  if(fromPlan){const g=findTx(fromPlan);if(g&&g.a==='plan')S.p[g.k].plan.splice(g.i,1)}
+  const p=ensure(k);if(fType==='plan')(p.plan||(p.plan=[])).push(rec);else p.tx.push(rec);S.cur=k;save();closeSheet();render()}
 // 금액 칸 계산기: 금액 칸에 식(45,000 ÷ 3)을 그대로 쓰고, 저장하면 결과 금액으로 저장
 // 예전에 메모 끝에 남기던 계산식 [45,000÷3]은 자동완성에서 빼고 보여주고, 수정 창을 열면 지워짐
 const bare=m=>m.replace(/\s*\[[\d,]+[+−×÷][\d,+−×÷]*\]$/,'');
@@ -544,7 +573,7 @@ function splitBy(n){if(!calcAmt())return alert('금액을 먼저 입력해 주�
 let sugs=[],sugOn=-1;
 function suggest(){const q=$('fMemo').value.trim(),seen={};sugs=[];sugOn=-1;
   if(q)for(const k in S.p)for(const t of S.p[k].tx){
-    const m=bare(t.memo||'');if(t.type!==fType||!m.includes(q))continue;
+    const m=bare(t.memo||'');if(t.type!==(fType==='plan'?'out':fType)||!m.includes(q))continue;
     const o=seen[m];
     if(!o)sugs.push(seen[m]={t,m,n:1});
     else{o.n++;if(t.date>o.t.date||(t.date===o.t.date&&t.id>o.t.id))o.t=t}}
@@ -565,7 +594,7 @@ function sugKey(e){if(!sugs.length||e.isComposing)return;
   else if(e.key==='Enter'&&sugOn>=0){e.preventDefault();useSug(sugOn)}
   else if(e.key==='Escape'){e.preventDefault();hideSug()}}
 function delTx(){if(!editId||!confirm('이 기록을 삭제할까요?'))return;
-  const f=findTx(editId);if(f)S.p[f.k].tx.splice(f.i,1);save();closeSheet();render()}
+  const f=findTx(editId);if(f)S.p[f.k][f.a].splice(f.i,1);save();closeSheet();render()}
 
 // ---- 백업 ----
 function exportData(){const b=new Blob([JSON.stringify(S)],{type:'application/json'});
@@ -641,15 +670,15 @@ function resolve(c){const rs=JSON.stringify(c.data),B=getBase();
 function merge3(B,L,R){const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b),pick=(b,l,r)=>eq(l,b)?r:l,out={p:{}};
   for(const k of new Set([...Object.keys(L),...Object.keys(R)]))if(k!=='p'){const v=k==='cur'?L.cur:pick(B[k],L[k],R[k]);if(v!==undefined)out[k]=v}
   for(const k of new Set([...Object.keys(L.p),...Object.keys(R.p)])){const b=B.p&&B.p[k]||{},l=L.p[k],r=R.p[k],m={};
-    if(!l||!r){out.p[k]={...(l||r),tx:[]};continue}
-    for(const f of new Set([...Object.keys(l),...Object.keys(r)]))if(f!=='tx'){const v=pick(b[f],l[f],r[f]);if(v!==undefined)m[f]=v}
+    if(!l||!r){const{tx,plan,...rest}=l||r;out.p[k]={...rest,tx:[]};continue}
+    for(const f of new Set([...Object.keys(l),...Object.keys(r)]))if(f!=='tx'&&f!=='plan'){const v=pick(b[f],l[f],r[f]);if(v!==undefined)m[f]=v}
     m.tx=[];out.p[k]=m}
-  const flat=s=>{const o={};for(const k in s.p||{})for(const t of s.p[k].tx)o[t.id]={k,t};return o};
+  const flat=s=>{const o={};for(const k in s.p||{})for(const a of ['tx','plan'])for(const t of s.p[k][a]||[])o[a+t.id]={k,a,t};return o};
   const fb=flat(B),fl=flat(L),fr=flat(R);
   for(const id of new Set([...Object.keys(fl),...Object.keys(fr)])){const b=fb[id],l=fl[id],r=fr[id];
     // 새로 생김 → 넣음 / 한쪽에서 지움 → 다른 쪽이 안 고쳤으면 지움 / 둘 다 있음 → 바꾼 쪽
     const x=!b?l||r:!l?(eq(r,b)?null:r):!r?(eq(l,b)?null:l):eq(l,b)?r:l;
-    if(x)out.p[x.k].tx.push(x.t)}
+    if(x){const P=out.p[x.k];(P[x.a]||(P[x.a]=[])).push(x.t)}}
   return out}
 
 async function pull(){
