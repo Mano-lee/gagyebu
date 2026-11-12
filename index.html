@@ -290,7 +290,8 @@ function render(){
   $('plabel').textContent=periodLabel(S.cur);
   $('remain').textContent=m.start===null?'잔고 미입력':won(c.remain);
   $('remain').classList.toggle('neg',m.start!==null&&c.remain<0);
-  $('pInc').textContent=won(c.inc);
+  // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록
+  $('pInc').textContent=won((m.start||0)+c.inc);
   $('pFixed').textContent=won(c.fixed);
   $('pSpent').textContent=won(c.spent);
   const t=wide.matches&&tab==='list'?'home':tab;
