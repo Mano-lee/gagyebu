@@ -23,6 +23,7 @@ header{background:var(--accent);color:#fff;padding:18px 18px 22px}
 .pills{display:flex;gap:8px;margin-top:14px}
 .pill{flex:1;background:rgba(255,255,255,.14);border-radius:12px;padding:9px 10px;font-size:11px}
 .pill b{display:block;font-size:14px;margin-top:3px}
+.pill small{display:block;font-size:10px;font-weight:500;opacity:.8;margin-top:2px}
 main{padding:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
 .card h2{font-size:15px;margin-bottom:12px}
@@ -141,7 +142,7 @@ nav button.on{color:var(--accent);font-weight:700}
   .big{font-size:36px}
   .pills{flex-direction:column;gap:6px;margin-top:18px}
   .pill{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:12px}
-  .pill b{margin:0;font-size:15px}
+  .pill b{margin:0;font-size:15px;text-align:right}
   .sy{text-align:left}
   .fab{position:static;width:auto;height:auto;margin:14px 24px 6px;padding:13px;border-radius:12px;background:#fff;color:var(--accent);font-size:15px;font-weight:700;box-shadow:none;cursor:pointer}
   .fab:hover{background:#eef5f2}
@@ -290,8 +291,8 @@ function render(){
   $('plabel').textContent=periodLabel(S.cur);
   $('remain').textContent=m.start===null?'잔고 미입력':won(c.remain);
   $('remain').classList.toggle('neg',m.start!==null&&c.remain<0);
-  // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록
-  $('pInc').textContent=won((m.start||0)+c.inc);
+  // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록. 수입 기록이 있으면 그 합계를 아래에 작게
+  $('pInc').innerHTML=won((m.start||0)+c.inc)+(c.inc?`<small>월급 외 +${won(c.inc)}</small>`:'');
   $('pFixed').textContent=won(c.fixed);
   $('pSpent').textContent=won(c.spent);
   const t=wide.matches&&tab==='list'?'home':tab;
@@ -348,7 +349,6 @@ function home(m,c){let h='';
     <div class="tr"><div class="fl" style="width:${p}%"></div></div></div>`;
     if(on)h+=`<div class="catl">${m.tx.filter(t=>t.type==='out'&&t.cat===k).sort(byDate).map(txRow).join('')}</div>`});
   h+='</div>';
-  if(c.inc)h+=`<div class="card"><div class="item"><span>이번 기간 수입</span><span class="in">+${won(c.inc)}</span></div></div>`;
   const recent=[...m.tx].sort(byDate).slice(0,5);
   if(recent.length&&!wide.matches)h+=`<div class="card"><h2>최근 기록</h2>${recent.map(txRow).join('')}</div>`;
   return h}
