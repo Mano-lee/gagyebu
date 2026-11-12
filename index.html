@@ -20,12 +20,10 @@ header{background:var(--accent);color:#fff;padding:18px 18px 22px}
 .lbl{font-size:13px;opacity:.8;margin-top:14px}
 .big{font-size:34px;font-weight:700;margin-top:2px}
 .big.neg{color:#ffd2c8}
-.rnote{font-size:12px;opacity:.8;margin-top:2px}
-.rnote:empty{display:none}
 .pills{display:flex;gap:8px;margin-top:14px}
 .pill{flex:1;background:rgba(255,255,255,.14);border-radius:12px;padding:9px 10px;font-size:11px}
 .pill b{display:block;font-size:14px;margin-top:3px}
-.pill small{display:block;font-size:10px;font-weight:500;opacity:.8;margin-top:2px}
+.pill small{display:block;font-size:10px;font-weight:500;opacity:.8;margin-top:2px;white-space:nowrap;letter-spacing:-.3px}
 main{padding:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
 .card h2{font-size:15px;margin-bottom:12px}
@@ -179,9 +177,7 @@ nav button.on{color:var(--accent);font-weight:700}
   <div class="brand">내 가계부</div>
   <div class="mnav"><button onclick="movePeriod(-1)">‹</button><span id="plabel"></span><button onclick="movePeriod(1)">›</button></div>
   <div class="lbl">고정지출 빼고 남은 돈</div>
-  <div class="big" id="remain"></div>
-  <div class="rnote" id="rNote"></div>
-  <div class="pills">
+  <div class="big" id="remain"></div>  <div class="pills">
     <div class="pill">이번 기간 수입<b id="pInc"></b></div>
     <div class="pill">고정지출<b id="pFixed"></b></div>
     <div class="pill">이번 기간 지출<b id="pSpent"></b></div>
@@ -300,11 +296,11 @@ function render(){
   $('plabel').textContent=periodLabel(S.cur);
   $('remain').textContent=m.start===null?'잔고 미입력':won(c.remain);
   $('remain').classList.toggle('neg',m.start!==null&&c.remain<0);
-  $('rNote').textContent=c.planned?`예정 지출 ${won(c.planned)}도 미리 뺐어요`:'';
   // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록. 수입 기록이 있으면 그 합계를 아래에 작게
   $('pInc').innerHTML=won((m.start||0)+c.inc)+(c.inc?`<small>월급 외 +${won(c.inc)}</small>`:'');
   $('pFixed').textContent=won(c.fixed);
-  $('pSpent').textContent=won(c.spent);
+  // 예정 지출은 아직 안 쓴 돈이라 지출 합계엔 안 넣고 아래에 작게 (남은 돈에서는 미리 뺌)
+  $('pSpent').innerHTML=won(c.spent)+(c.planned?`<small>지출 예정 ${won(c.planned)}</small>`:'');
   const t=wide.matches&&tab==='list'?'home':tab;
   ['home','list','set'].forEach(x=>$('t-'+x).classList.toggle('on',x===t));
   $('view').innerHTML=t==='set'?settings(m):t==='list'?list(m)
