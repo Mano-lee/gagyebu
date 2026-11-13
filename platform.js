@@ -16,7 +16,7 @@ function navigateApp(id,section=''){
 }
 function normalizeAppRoute(id,section=''){
   if(id==='ledger')return {id,section:['home','list','set'].includes(section)?section:'home'};
-  if(id==='fridge')return {id,section:['active','pending','history','soon','opened'].includes(section)?section:'active'};
+  if(id==='fridge')return {id,section:['active','pending','history','soon'].includes(section)?section:'active'};
   return {id:id==='settings'?'settings':'platform',section:''};
 }
 function restoreAppRoute(){

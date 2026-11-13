@@ -273,17 +273,15 @@ nav button.on{color:var(--accent);font-weight:700}
       <div class="row2"><div><label for="fdQty">남은 수량</label><input id="fdQty" type="number" inputmode="decimal" min="0" step="any" value="1" required></div><div><label for="fdUnit">단위</label><input id="fdUnit" placeholder="개, 통, 팩, 봉, g" value="개" maxlength="12"></div></div>
       <small class="food-help">낱개나 소분한 단위로 등록해요. 예: 계란 10개, 소분 고기 5팩. 개·통·팩 등은 목록에서 하나씩 사용할 수 있어요.</small>
       <div class="row2"><div><label for="fdBought">구매일</label><input id="fdBought" type="date" oninput="changeFoodBought()"></div><div><label for="fdExpiry">표시된 기한 (선택)</label><input id="fdExpiry" type="date" oninput="manualFoodExpiry()"></div></div>
-      <div id="fdExpiryPresets" class="food-expiry-presets" role="group" aria-label="구매일 기준 기한 빠른 지정">
-        <button type="button" class="chip" data-preset="1d" aria-pressed="false" onclick="chooseFoodExpiry('1d')">1일</button>
-        <button type="button" class="chip" data-preset="1w" aria-pressed="false" onclick="chooseFoodExpiry('1w')">1주</button>
-        <button type="button" class="chip" data-preset="1m" aria-pressed="false" onclick="chooseFoodExpiry('1m')">1개월</button>
-        <button type="button" class="chip" data-preset="3m" aria-pressed="false" onclick="chooseFoodExpiry('3m')">3개월</button>
-        <button type="button" class="chip" data-preset="6m" aria-pressed="false" onclick="chooseFoodExpiry('6m')">6개월</button>
+      <div id="fdExpiryPresets" class="food-expiry-presets" role="group" aria-label="기한에 기간 더하기">
+        <button type="button" class="chip" data-preset="1d" onclick="chooseFoodExpiry('1d')">1일<span class="expiry-press-count" hidden></span></button>
+        <button type="button" class="chip" data-preset="1w" onclick="chooseFoodExpiry('1w')">1주<span class="expiry-press-count" hidden></span></button>
+        <button type="button" class="chip" data-preset="1m" onclick="chooseFoodExpiry('1m')">1개월<span class="expiry-press-count" hidden></span></button>
+        <button type="button" class="chip" data-preset="3m" onclick="chooseFoodExpiry('3m')">3개월<span class="expiry-press-count" hidden></span></button>
+        <button type="button" class="chip" data-preset="6m" onclick="chooseFoodExpiry('6m')">6개월<span class="expiry-press-count" hidden></span></button>
       </div>
-      <p id="fdExpiryHint" class="food-expiry-hint" role="status">구매일로부터 선택한 기간 뒤의 날짜를 채워요.</p>
+      <div class="food-expiry-hint-row"><p id="fdExpiryHint" class="food-expiry-hint" role="status">누를 때마다 현재 기한에 더해요. 기한이 없으면 구매일부터 시작해요.</p><button type="button" class="food-expiry-reset" onclick="resetFoodExpiry()">초기화</button></div>
       <small class="food-help">포장에 적힌 소비기한·유통기한을 입력하세요. 모르면 비워 두어도 돼요.</small>
-      <label class="food-open"><input id="fdOpened" type="checkbox" onchange="toggleFoodOpened()">이미 개봉했어요</label>
-      <div id="fdOpenedDate" hidden><label for="fdOpenedAt">개봉일</label><input id="fdOpenedAt" type="date"></div>
       <div id="fdStatusRow" class="food-status-row" hidden><label for="fdStatus">사용 상태</label><select id="fdStatus" onchange="syncFoodStatusInput()"><option value="active">보관 중</option><option value="consumed">다 먹음</option><option value="discarded">폐기</option></select></div>
       <button id="fdSave" class="btn" type="submit">식재료 저장</button>
       <button id="fdFinish" class="btn ghost" type="button" onclick="finishFoodTask()" hidden>등록 완료</button>
@@ -740,6 +738,7 @@ function merge3(B,L,R){const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b),pic
   try{if(typeof B==='string')B=JSON.parse(B)}catch(e){return null}
   for(const k of new Set([...Object.keys(L),...Object.keys(R)]))if(k!=='p'&&k!=='foods'){const v=k==='cur'?L.cur:pick(B[k],L[k],R[k]);if(v!==undefined)out[k]=v}
   out.foods=mergeFoodRecords(B.foods,L.foods,R.foods);out.schemaVersion=3;
+  for(const food of Object.values(out.foods))delete food.openedAt;
   for(const k of new Set([...Object.keys(L.p),...Object.keys(R.p)])){const b=B.p&&B.p[k]||{},l=L.p[k],r=R.p[k],m={};
     if(!l||!r){const{tx,plan,...rest}=l||r;out.p[k]={...rest,tx:[]};continue}
     for(const f of new Set([...Object.keys(l),...Object.keys(r)]))if(f!=='tx'&&f!=='plan'){const v=pick(b[f],l[f],r[f]);if(v!==undefined)m[f]=v}

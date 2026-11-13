@@ -105,17 +105,16 @@ test('deleting a purchase removes its pending task but preserves registered inve
 test('unchecking food cancels the pending task without deleting registered products',()=>{
   const a=app(),id=addPurchase(a);a.run(`openFoodTask(${id})`);addFood(a);a.run(`closeFoodSheet();openSheet(${id})`);a.checks.forEach(c=>c.checked=false);a.run('saveTx()');assert.equal(a.run('pendingFoodTasks().length'),0);assert.equal(a.run('foodItems().length'),1);
 });
-test('direct registration, same-name batches, opening, consumption and restoration',()=>{
+test('direct registration, same-name batches, consumption and restoration',()=>{
   const a=app();a.run('openFoodSheet()');const id=addFood(a);a.run('openFoodSheet()');addFood(a);assert.equal(a.run('foodItems().length'),2);
-  a.run(`changeFoodState('${id}','opened')`);assert.equal(a.run(`S.foods['${id}'].openedAt`),a.run('today()'));
   a.run(`changeFoodState('${id}','consumed')`);assert.equal(a.run(`S.foods['${id}'].status`),'consumed');
   a.run(`changeFoodState('${id}','active')`);assert.equal(a.run(`S.foods['${id}'].status`),'active');assert.equal(a.run(`S.foods['${id}'].finishedAt`),undefined);
   a.run(`changeFoodState('${id}','discarded')`);assert.equal(a.run(`S.foods['${id}'].status`),'discarded');
 });
-test('missing product name, invalid quantity and future opening date do not save',()=>{
+test('missing product name and invalid quantities do not save',()=>{
   const a=app();a.run('openFoodSheet();saveFood()');assert.equal(a.run('foodItems().length'),0);
   a.el('fdName').value='우유';a.el('fdQty').value='0';a.run('saveFood()');assert.equal(a.run('foodItems().length'),0);
-  a.el('fdQty').value='1';a.el('fdOpened').checked=true;a.el('fdOpenedAt').value='2999-01-01';a.run('saveFood()');assert.equal(a.run('foodItems().length'),0);
+  a.el('fdQty').value='-1';a.run('saveFood()');assert.equal(a.run('foodItems().length'),0);
 });
 test('inventory and pending tasks persist when loading the same saved state again',()=>{
   const a=app(),id=addPurchase(a);a.run(`openFoodTask(${id})`);addFood(a);const b=app(JSON.parse(a.memory.get('my-gagyebu-v2')));assert.equal(b.run('foodItems().length'),1);assert.equal(b.run('pendingFoodTasks().length'),1);
@@ -153,9 +152,9 @@ test('backup validation rejects unsafe inventory IDs and malformed inventory',()
   const a=app();assert.throws(()=>a.run('prepareFoodData({p:{},foods:[]})'));
   assert.throws(()=>a.run(`prepareFoodData({p:{},foods:{"bad'":{id:"bad'",name:'x',store:'chilled',status:'active',quantity:1}}})`));
 });
-test('expiry day/week shortcuts use purchase date rather than today or the previous expiry',()=>{
+test('expiry buttons repeatedly add days and weeks from the initial purchase date',()=>{
   const a=app();assert.equal(a.run('foodPresetDate("2026-12-31","1d")'),'2027-01-01');assert.equal(a.run('foodPresetDate("2026-12-28","1w")'),'2027-01-04');
-  a.run('openFoodSheet()');a.el('fdBought').value='2026-11-13';a.run('chooseFoodExpiry("1w");chooseFoodExpiry("1w")');assert.equal(a.el('fdExpiry').value,'2026-11-20');
+  a.run('openFoodSheet()');a.el('fdBought').value='2026-11-13';a.run('chooseFoodExpiry("1d");chooseFoodExpiry("1d")');assert.equal(a.el('fdExpiry').value,'2026-11-15');a.run('chooseFoodExpiry("1w")');assert.equal(a.el('fdExpiry').value,'2026-11-22');
 });
 test('expiry month shortcuts clamp month ends and handle leap years without using fixed-day approximations',()=>{
   const a=app();
@@ -163,22 +162,39 @@ test('expiry month shortcuts clamp month ends and handle leap years without usin
 });
 test('expiry shortcuts reject missing or invalid purchase dates without overwriting an existing expiry',()=>{
   const a=app();for(const date of ['',null,'2026-02-30','2026-13-01','invalid']){a.context.date=date;assert.equal(a.run('foodPresetDate(date,"1m")'),null)}
-  assert.equal(a.run('foodPresetDate("2026-11-13","invalid")'),null);a.run('openFoodSheet()');a.el('fdBought').value='';a.el('fdExpiry').value='2026-12-01';assert.equal(a.run('chooseFoodExpiry("1w")'),false);assert.equal(a.el('fdExpiry').value,'2026-12-01');
+  assert.equal(a.run('foodPresetDate("2026-11-13","invalid")'),null);a.run('openFoodSheet()');a.el('fdBought').value='';assert.equal(a.run('chooseFoodExpiry("1w")'),false);assert.equal(a.el('fdExpiry').value,'');
+  a.el('fdExpiry').value='2026-12-01';assert.equal(a.run('chooseFoodExpiry("1w")'),true);assert.equal(a.el('fdExpiry').value,'2026-12-08');
 });
 test('changing purchase date recalculates a selected expiry shortcut and blocks saving until purchase date is present',()=>{
   const a=app();a.run('openFoodSheet()');a.el('fdBought').value='2024-01-31';a.run('chooseFoodExpiry("1m")');a.el('fdBought').value='2024-02-29';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2024-03-29');
   a.el('fdBought').value='';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'');a.el('fdName').value='우유';assert.equal(a.run('saveFood()'),false);assert.equal(a.run('foodItems().length'),0);
 });
 test('manual expiry clears the shortcut and subsequent purchase-date changes leave the manual date unchanged',()=>{
-  const a=app();a.run('openFoodSheet()');a.el('fdBought').value='2026-01-31';a.run('chooseFoodExpiry("1m")');a.el('fdExpiry').value='2026-03-10';a.run('manualFoodExpiry()');a.el('fdBought').value='2026-02-02';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2026-03-10');assert.equal(a.run('foodExpiryPreset'),null);
+  const a=app();a.run('openFoodSheet()');a.el('fdBought').value='2026-01-31';a.run('chooseFoodExpiry("1m")');a.el('fdExpiry').value='2026-03-10';a.run('manualFoodExpiry()');a.el('fdBought').value='2026-02-02';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2026-03-10');assert.deepEqual(a.json('foodExpirySteps'),[]);
 });
 test('saved expiry shortcuts reopen selected and survive reload, while batch registration resets the next product',()=>{
-  const a=app(),purchase=addPurchase(a);a.run(`openFoodTask(${purchase})`);a.el('fdBought').value='2026-01-31';a.run('chooseFoodExpiry("1m")');const id=addFood(a);assert.equal(a.run('foodExpiryPreset'),null);assert.equal(a.el('fdExpiry').value,'');
-  assert.equal(a.run(`S.foods['${id}'].bestBefore`),'2026-02-28');const b=app(JSON.parse(a.memory.get('my-gagyebu-v2')));b.run(`editFood('${id}')`);assert.equal(b.run('foodExpiryPreset'),'1m');assert.equal(b.el('fdExpiry').value,'2026-02-28');
-  b.el('fdExpiry').value='2026-03-05';b.run('manualFoodExpiry();saveFood()');assert.equal(b.run(`S.foods['${id}'].expiryPreset`),undefined);
+  const a=app(),purchase=addPurchase(a);a.run(`openFoodTask(${purchase})`);a.el('fdBought').value='2026-01-31';a.run('chooseFoodExpiry("1m")');const id=addFood(a);assert.deepEqual(a.json('foodExpirySteps'),[]);assert.equal(a.el('fdExpiry').value,'');
+  assert.equal(a.run(`S.foods['${id}'].bestBefore`),'2026-02-28');const b=app(JSON.parse(a.memory.get('my-gagyebu-v2')));b.run(`editFood('${id}')`);assert.deepEqual(b.json('foodExpirySteps'),['1m']);assert.equal(b.el('fdExpiry').value,'2026-02-28');
+  b.el('fdExpiry').value='2026-03-05';b.run('manualFoodExpiry();saveFood()');assert.equal(b.run(`S.foods['${id}'].expirySteps`),undefined);
 });
 test('existing manually entered expiry dates remain unchanged when editing purchase date',()=>{
-  const a=app(),id=addStock(a,2);a.run(`S.foods['${id}'].bestBefore='2026-12-01';editFood('${id}')`);a.el('fdBought').value='2026-11-20';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2026-12-01');assert.equal(a.run('foodExpiryPreset'),null);
+  const a=app(),id=addStock(a,2);a.run(`S.foods['${id}'].bestBefore='2026-12-01';editFood('${id}')`);a.el('fdBought').value='2026-11-20';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2026-12-01');assert.deepEqual(a.json('foodExpirySteps'),[]);
+});
+test('cumulative expiry follows month-end clamping in click order and recalculates after purchase changes',()=>{
+  const a=app();a.run('openFoodSheet()');a.el('fdBought').value='2026-01-31';a.run('chooseFoodExpiry("1m");chooseFoodExpiry("1m")');assert.equal(a.el('fdExpiry').value,'2026-03-28');
+  a.el('fdBought').value='2024-01-31';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2024-03-29');
+});
+test('manually entered deadlines can be extended, saved and extended again without changing their anchor',()=>{
+  const a=app();a.run('openFoodSheet()');a.el('fdBought').value='2026-01-01';a.el('fdExpiry').value='2026-02-01';a.run('manualFoodExpiry();chooseFoodExpiry("1d");chooseFoodExpiry("1w")');const id=addFood(a);assert.equal(a.run(`S.foods['${id}'].bestBefore`),'2026-02-09');
+  const b=app(JSON.parse(a.memory.get('my-gagyebu-v2')));b.run(`editFood('${id}')`);b.el('fdBought').value='2026-01-20';b.run('changeFoodBought()');assert.equal(b.el('fdExpiry').value,'2026-02-09');b.run('chooseFoodExpiry("1d")');assert.equal(b.el('fdExpiry').value,'2026-02-10');
+});
+test('reset clears accumulated expiry and a legacy single preset can be extended',()=>{
+  const a=app(),id=addStock(a,1);a.run(`S.foods['${id}'].purchasedAt='2026-01-31';S.foods['${id}'].bestBefore='2026-02-28';S.foods['${id}'].expiryPreset='1m';editFood('${id}');chooseFoodExpiry('1d')`);assert.equal(a.el('fdExpiry').value,'2026-03-01');a.run('saveFood()');assert.deepEqual(a.json(`S.foods['${id}'].expirySteps`),['1m','1d']);
+  a.run(`editFood('${id}');resetFoodExpiry();chooseFoodExpiry('1d')`);assert.equal(a.el('fdExpiry').value,'2026-02-01');assert.deepEqual(a.json('foodExpirySteps'),['1d']);
+});
+test('legacy opening metadata is removed without losing inventory, amounts or ledger links',()=>{
+  const a=app(),id=addStock(a,5),data=a.json('S');data.foods[id].openedAt='2026-11-13';const b=app(data);assert.equal(b.run(`S.foods['${id}'].openedAt`),undefined);assert.equal(b.run(`S.foods['${id}'].quantity`),5);assert.ok(!b.run('fridgePage()').includes('개봉'));
+  b.run('openApp("fridge","opened")');assert.equal(b.run('foodView'),'active');
 });
 test('one-tap use reduces only the selected batch and keeps initial and remaining amounts across reloads',()=>{
   const a=app(),id=addStock(a,10);addStock(a,3,'통');a.run(`useFood('${id}');useFood('${id}')`);
@@ -222,9 +238,9 @@ test('sync combines zero-stock completion with a remote metadata edit and can re
 });
 test('three-way sync combines distinct products and distinct edits to one product',()=>{
   const a=app();a.run('openFoodSheet()');const id=addFood(a),base=a.json('S'),l=clone(base),r=clone(base);
-  l.foods[id].openedAt='2026-11-13';r.foods[id].quantity=2;r.foods.other={...r.foods[id],id:'other',name:'계란'};
+  l.foods[id].bestBefore='2026-12-01';r.foods[id].quantity=2;r.foods.other={...r.foods[id],id:'other',name:'계란'};
   a.context.base=base;a.context.left=l;a.context.right=r;
-  const result=a.json('merge3(JSON.stringify(base),left,right)');assert.equal(Object.keys(result.foods).length,2);assert.equal(result.foods[id].openedAt,'2026-11-13');assert.equal(result.foods[id].quantity,2);
+  const result=a.json('merge3(JSON.stringify(base),left,right)');assert.equal(Object.keys(result.foods).length,2);assert.equal(result.foods[id].bestBefore,'2026-12-01');assert.equal(result.foods[id].quantity,2);
 });
 test('three-way sync preserves expense edits alongside completing its food task',()=>{
   const a=app(),id=addPurchase(a),base=a.json('S'),l=clone(base),r=clone(base),k=base.cur;
