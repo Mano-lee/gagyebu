@@ -46,6 +46,39 @@ function foodTaskCard(t,history=false){
 }
 function foodDays(date){if(!date)return null;const days=(Date.parse(date+'T00:00:00Z')-Date.parse(today()+'T00:00:00Z'))/864e5;return Number.isFinite(days)?Math.round(days):null}
 function foodExpiry(f){const n=foodDays(f.bestBefore);return n===null?{text:'기한 미입력',cls:''}:n<0?{text:`표시 기한 ${-n}일 지남`,cls:'past'}:n===0?{text:'표시 기한 오늘',cls:'soon'}:n<=3?{text:`표시 기한 D-${n}`,cls:'soon'}:{text:`표시 기한 ${f.bestBefore}`,cls:''}}
+function foodStorageSummary(store,items=foodItems()){
+  const summary={count:0,soon:0,expired:0,unknown:0};
+  for(const f of items){
+    if(f.status!=='active'||f.store!==store)continue;
+    summary.count++;const days=foodDays(f.bestBefore);
+    if(days===null)summary.unknown++;else if(days<0)summary.expired++;else if(days<=3)summary.soon++;
+  }
+  return summary;
+}
+function foodStorageStatus(summary){
+  if(!summary.count)return '<span class="storage-status"><span class="storage-note">비어 있어요</span></span>';
+  const badges=[];
+  if(summary.soon)badges.push(`<span class="storage-badge soon">임박 ${summary.soon}</span>`);
+  if(summary.expired)badges.push(`<span class="storage-badge past">기한 지남 ${summary.expired}</span>`);
+  if(!summary.soon&&!summary.expired&&summary.count>summary.unknown)badges.push('<span class="storage-badge clear">임박 없음</span>');
+  if(summary.unknown)badges.push(`<span class="storage-note">기한 미입력 ${summary.unknown}</span>`);
+  return `<span class="storage-status">${badges.join('')}</span>`;
+}
+function selectFoodStorage(store){
+  if(!Object.hasOwn(FOOD_STORES,store))return;
+  openApp('fridge');foodStore=store;render();
+  $('foodList')?.scrollIntoView?.({block:'start',behavior:'smooth'});
+}
+function foodStorageOverview(items){
+  const summary=Object.fromEntries(Object.keys(FOOD_STORES).map(store=>[store,foodStorageSummary(store,items)]));
+  const icons={frozen:'<path d="M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M8 4l4 3 4-3M8 20l4-3 4 3"/>',chilled:'<path d="M5 20C0 10 8 3 21 3c0 13-7 21-16 17Zm0 0L16 9"/>',pantry:'<path d="m3 7 9-4 9 4v11l-9 4-9-4V7Zm0 0 9 4 9-4M12 11v11M8 5l9 4"/>'};
+  const contents=store=>`<span class="storage-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[store]}</svg>${store==='pantry'?'실온':FOOD_STORES[store]+'실'}</span><span class="storage-count"><strong>${summary[store].count}</strong><small>개 품목</small></span>${foodStorageStatus(summary[store])}`;
+  const attributes=store=>`id="storage-${store}" data-store="${store}" aria-pressed="${foodView==='active'&&foodStore===store}" aria-label="${FOOD_STORES[store]} 보관 ${summary[store].count}개 품목, 기한 임박 ${summary[store].soon}개, 기한 경과 ${summary[store].expired}개, 기한 미입력 ${summary[store].unknown}개. 목록 보기" onclick="selectFoodStorage('${store}')"`;
+  return `<section class="storage-overview" aria-label="보관 장소별 식재료 현황"><div class="storage-overview-heading"><h2>우리 집 보관함</h2><span>총 ${items.length}개 품목</span></div><p class="storage-instruction">냉장고와 박스를 눌러 재료를 확인하세요.</p>
+  <div class="storage-scene"><div class="storage-column"><div class="fridge-appliance" role="group" aria-label="냉장고"><button class="storage-door freezer-door" ${attributes('frozen')}>${contents('frozen')}</button><button class="storage-door chiller-door" ${attributes('chilled')}>${contents('chilled')}</button></div><p class="storage-caption">냉장고</p></div>
+  <div class="storage-column pantry-column"><div class="pantry-box"><svg class="box-flaps" viewBox="0 0 240 100" preserveAspectRatio="none" aria-hidden="true"><path d="m20 56 100-28 100 28-100 27Z" fill="#a77d50"/><path d="m20 56 100-28L94 4 0 30Z" fill="#e8cba3" stroke="#c6a075" stroke-linejoin="round"/><path d="m120 28 100 28 20-26-94-26Z" fill="#f0d7b7" stroke="#c6a075" stroke-linejoin="round"/><path d="m20 56 100 27-28 17L0 73Z" fill="#dfba8b" stroke="#bf986d" stroke-linejoin="round"/><path d="m120 83 100-27 20 17-92 27Z" fill="#e9c9a1" stroke="#bf986d" stroke-linejoin="round"/></svg><button class="pantry-body" ${attributes('pantry')}><span class="pantry-label">${contents('pantry')}</span></button></div><p class="storage-caption">실온 보관함</p></div></div>
+  <p class="storage-footnote">임박은 표시 기한까지 3일 이내예요. 수량 대신 등록한 품목 수를 표시해요.</p></section>`;
+}
 function setFoodView(view){openApp('fridge',view)}
 function setFoodStore(store){foodStore=store;render()}
 function filterFoods(value){foodQuery=value;const input=$('foodSearch'),pos=input.selectionStart;render();$('foodSearch').focus();$('foodSearch').setSelectionRange(pos,pos)}
@@ -63,9 +96,10 @@ function fridgePage(){
   items=items.filter(f=>(foodStore==='all'||f.store===foodStore)&&f.name.toLocaleLowerCase().includes(foodQuery.trim().toLocaleLowerCase())).sort((a,b)=>(a.bestBefore||'9999').localeCompare(b.bestBefore||'9999')||a.name.localeCompare(b.name,'ko'));
   const history=foodPurchases().filter(t=>['done','skipped'].includes(t.foodState));
   return `<div class="food-heading"><div><h1>우리 집 냉장고</h1><p class="muted">장을 본 기록을, 먹을 재료로 정리해요.</p></div><button class="btn" onclick="openFoodSheet()">+ 직접 등록</button></div>
-  <div class="food-stats"><button class="food-stat${foodView==='active'?' on':''}" onclick="setFoodView('active')">보관 중<b>${active.length}</b></button><button class="food-stat warn${foodView==='soon'?' on':''}" onclick="setFoodView('soon')">기한 임박·경과<b>${soon.length}</b></button><button class="food-stat${foodView==='opened'?' on':''}" onclick="setFoodView('opened')">개봉한 식품<b>${opened.length}</b></button></div>
+  ${foodStorageOverview(active)}
+  <div class="food-quick-filters" aria-label="식재료 상태 필터"><button class="chip${foodView==='active'&&foodStore==='all'?' on':''}" onclick="setFoodView('active')">전체 ${active.length}</button><button class="chip${foodView==='soon'?' on':''}" onclick="setFoodView('soon')">기한 임박·경과 ${soon.length}</button><button class="chip${foodView==='opened'?' on':''}" onclick="setFoodView('opened')">개봉 ${opened.length}</button></div>
   ${pending.length?`<h2 id="foodTasks" class="food-section-title">식재료 등록 대기 <span class="badge">${pending.length}건</span></h2><div class="food-task-grid">${pending.map(t=>foodTaskCard(t)).join('')}</div>`:fridgeSection==='pending'?'<div id="foodTasks" class="card food-empty"><strong>등록 대기 중인 장보기가 없어요.</strong><p class="muted">가계부에 지출을 기록할 때 냉장·냉동·실온을 체크해 주세요.</p></div>':''}
-  <h2 class="food-section-title">${foodView==='history'?'소비·폐기 기록':foodView==='soon'?'표시 기한이 가까운 식재료':foodView==='opened'?'개봉한 식재료':'보관 중인 식재료'}<button class="chip${foodView==='history'?' on':''}" onclick="setFoodView('${foodView==='history'?'active':'history'}')">${foodView==='history'?'보관 목록':'소비·폐기 기록'}</button></h2>
+  <h2 id="foodList" class="food-section-title">${foodView==='history'?'소비·폐기 기록':foodView==='soon'?'표시 기한이 가까운 식재료':foodView==='opened'?'개봉한 식재료':foodStore==='all'?'보관 중인 식재료':FOOD_STORES[foodStore]+' 보관 식재료'}<button class="chip${foodView==='history'?' on':''}" onclick="setFoodView('${foodView==='history'?'active':'history'}')">${foodView==='history'?'보관 목록':'소비·폐기 기록'}</button></h2>
   <div class="food-filters" aria-label="보관 장소 필터">${[['all','전체'],...Object.entries(FOOD_STORES)].map(([k,v])=>`<button class="chip${foodStore===k?' on':''}" aria-pressed="${foodStore===k}" onclick="setFoodStore('${k}')">${v}</button>`).join('')}</div>
   <input id="foodSearch" class="food-search" type="search" aria-label="식재료 이름 검색" placeholder="식재료 이름 검색" value="${esc(foodQuery)}" oninput="filterFoods(this.value)">
   <div class="food-grid">${items.map(foodCard).join('')||`<div class="card food-empty"><strong>${foodQuery||foodStore!=='all'?'조건에 맞는 식재료가 없어요.':foodView==='history'?'아직 소비·폐기 기록이 없어요.':foodView==='soon'?'기한이 임박하거나 지난 식재료가 없어요.':foodView==='opened'?'개봉한 식재료가 없어요.':'아직 보관 중인 식재료가 없어요.'}</strong><p class="muted">${foodView==='active'&&!foodQuery&&foodStore==='all'?(pending.length?'위의 등록 대기에서 구매한 제품을 추가해 주세요.':'가계부에 지출을 쓸 때 냉장·냉동·실온을 체크해 보세요.<br>이미 가지고 있는 식재료는 직접 등록할 수 있어요.'):'다른 필터나 보관 목록도 확인해 보세요.'}</p></div>`}</div>
@@ -114,7 +148,7 @@ function closeFoodSheet(force=false){
   if(!force&&foodDraft()!==foodDraftBaseline&&!confirm('아직 저장하지 않은 입력을 닫을까요?\n이미 저장한 식재료는 그대로 남아요.'))return;
   $('foodSheet').classList.remove('show');
   foodEditId=foodTaskId=null;
-  (foodPreviousFocus&&foodPreviousFocus.isConnected?foodPreviousFocus:$('t-fridge')).focus();
+  (foodPreviousFocus&&foodPreviousFocus.isConnected?foodPreviousFocus:$('f-active')).focus();
 }
 function toggleFoodOpened(){$('fdOpenedDate').hidden=!$('fdOpened').checked}
 function updateFoodTaskProgress(){

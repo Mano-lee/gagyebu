@@ -99,13 +99,28 @@ let browser,socket,profile;
   assert.equal(await evaluate('cur().tx.length'),1);
   await evaluate(`document.querySelector('.food-grid .food-actions .btn').click()`);
   assert.equal(await evaluate('foodItems().filter(f=>f.openedAt).length'),1);
-  await evaluate(`document.querySelector('.food-grid .food-card-top .food-name').click();$('fdStore').value='frozen';$('fdSave').click()`);
+  await evaluate(`document.querySelector('.food-grid .food-card-top .food-name').focus();document.querySelector('.food-grid .food-card-top .food-name').click();$('fdStore').value='frozen';$('fdSave').click()`);
   assert.equal(await evaluate('foodItems().filter(f=>f.store===\'frozen\').length'),1);
+  await evaluate(`openFoodSheet();$('fdName').value='양파';$('fdStore').value='pantry';$('fdExpiry').value=new Date(Date.parse(today()+'T00:00:00Z')-864e5).toISOString().slice(0,10);$('fdSave').click();openApp('fridge')`);
+  assert.equal(await evaluate(`$('storage-frozen').textContent.includes('임박 1')`),true);
+  assert.equal(await evaluate(`$('storage-chilled').textContent.includes('기한 미입력 1')`),true);
+  assert.equal(await evaluate(`$('storage-pantry').textContent.includes('기한 지남 1')`),true);
+  for(const store of ['chilled','frozen','pantry']){
+    await evaluate(`$('storage-${store}').click()`);
+    assert.equal(await evaluate('foodStore'),store);
+    assert.equal(await evaluate('document.querySelectorAll(".food-grid article").length'),1);
+    assert.equal(await evaluate(`$('storage-${store}').getAttribute('aria-pressed')`),'true');
+    assert.equal(await evaluate('document.querySelector(".storage-overview-heading").textContent.includes("총 3개 품목")'),true);
+  }
+  await evaluate(`openApp('fridge')`);
   for(const [width,height,name] of [[390,844,'mobile'],[360,800,'small-mobile'],[1280,900,'desktop']]){
     await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<960});
     await delay(100);
     assert.ok(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'),`Page overflow at ${width}px`);
+    assert.ok(await evaluate(`$('storage-pantry').getBoundingClientRect().left > $('storage-frozen').getBoundingClientRect().right`),`Pantry must remain to the right at ${width}px`);
+    assert.ok(await evaluate(`['#storage-frozen','#storage-chilled','#storage-pantry .pantry-label'].every(selector=>{const el=document.querySelector(selector);return el.scrollWidth<=el.clientWidth})`),`Storage text overflow at ${width}px`);
     const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(shot.data,'base64'));
+    fs.writeFileSync(path.join(out,'fridge-overview-'+name+'.png'),Buffer.from(shot.data,'base64'));
   }
   await send('Emulation.setDeviceMetricsOverride',{width:360,height:800,deviceScaleFactor:1,mobile:true});
   await evaluate(`document.querySelector('.food-heading .btn').click()`);
@@ -124,11 +139,12 @@ let browser,socket,profile;
   await send('Page.reload');await waitFor(ready,'offline reload');
   assert.equal(await evaluate('activeApp'),'platform');
   await evaluate(`$('t-fridge').click()`);
-  assert.equal(await evaluate('foodItems().length'),2);
-  assert.equal(await evaluate('document.querySelectorAll(".food-grid article").length'),2);
+  assert.equal(await evaluate('foodItems().length'),3);
+  assert.equal(await evaluate('document.querySelectorAll(".food-grid article").length'),3);
+  assert.equal(await evaluate(`$('storage-pantry').textContent.includes('기한 지남 1')`),true);
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.food-grid')).display`),'grid');
   assert.equal(errors.length,0,errors.join('\n'));
-  console.log('PASS: platform entry, separate app menus, task shortcut, shared settings, browser back/forward; purchase → partial registration → completion; 360/390/1280px layouts; offline platform reload with preserved inventory.');
+  console.log('PASS: platform and purchase flow; illustrated fridge/freezer/pantry counts, expiry states and clickable filters; right-hand pantry and text fit at 360/390/1280px; offline reload with preserved inventory.');
   console.log('Screenshots: .qa-preview/platform-mobile.png, .qa-preview/platform-desktop.png, .qa-preview/mobile.png');
   await send('Browser.close',{},false).catch(()=>{});
 })().catch(error=>{console.error(error);process.exitCode=1}).finally(async()=>{

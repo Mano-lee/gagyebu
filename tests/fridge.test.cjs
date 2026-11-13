@@ -126,6 +126,26 @@ test('expiry calculation handles missing, past, today and distant dates without 
 test('product names and purchase memos are escaped in the rendered UI',()=>{
   const a=app();a.run('openFoodSheet()');addFood(a,'<img src=x onerror=alert(1)>');const page=a.run('fridgePage()');assert.ok(page.includes('&lt;img'));assert.ok(!page.includes('<img src=x'));
 });
+test('storage overview counts active batches and separates upcoming, expired, missing and distant dates',()=>{
+  const a=app();
+  a.run(`const dateOffset=n=>new Date(Date.parse(today()+'T00:00:00Z')+n*864e5).toISOString().slice(0,10);
+    const stored=(id,days,status='active',store='chilled')=>({id,name:id,store,status,quantity:20,bestBefore:days===null?null:dateOffset(days)});
+    S.foods=Object.fromEntries([stored('today',0),stored('three-days',3),stored('expired',-1),stored('unknown',null),stored('later',4),stored('eaten',0,'consumed'),stored('discarded',-1,'discarded'),stored('frozen',0,'active','frozen')].map(f=>[f.id,f]));`);
+  assert.deepEqual(a.json('foodStorageSummary("chilled")'),{count:5,soon:2,expired:1,unknown:1});
+  assert.deepEqual(a.json('foodStorageSummary("frozen")'),{count:1,soon:1,expired:0,unknown:0});
+  assert.deepEqual(a.json('foodStorageSummary("pantry")'),{count:0,soon:0,expired:0,unknown:0});
+});
+test('missing expiry is clearly marked and never presented as no upcoming expiry when all dates are unknown',()=>{
+  const a=app();assert.ok(!a.run('foodStorageStatus({count:2,soon:0,expired:0,unknown:2})').includes('임박 없음'));
+  assert.ok(a.run('foodStorageStatus({count:2,soon:0,expired:0,unknown:2})').includes('기한 미입력 2'));
+  assert.ok(a.run('foodStorageStatus({count:1,soon:0,expired:0,unknown:0})').includes('임박 없음'));
+  assert.ok(a.run('foodStorageStatus({count:0,soon:0,expired:0,unknown:0})').includes('비어 있어요'));
+});
+test('selecting a pictured storage resets search/history and shows its active inventory',()=>{
+  const a=app();a.run('openApp("fridge","history");foodQuery="not found";selectFoodStorage("pantry")');
+  assert.equal(a.run('foodView'),'active');assert.equal(a.run('foodStore'),'pantry');assert.equal(a.run('foodQuery'),'');
+  assert.ok(a.el('view').innerHTML.includes('실온 보관 식재료'));
+});
 test('backup validation rejects unsafe inventory IDs and malformed inventory',()=>{
   const a=app();assert.throws(()=>a.run('prepareFoodData({p:{},foods:[]})'));
   assert.throws(()=>a.run(`prepareFoodData({p:{},foods:{"bad'":{id:"bad'",name:'x',store:'chilled',status:'active',quantity:1}}})`));
