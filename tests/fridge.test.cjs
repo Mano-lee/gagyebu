@@ -64,8 +64,13 @@ test('route restoration supports browser back and forward and unknown routes ret
   a.run('window.location.hash="#fridge/history";restoreAppRoute()');assert.equal(a.run('foodView'),'history');
   a.run('window.location.hash="#unknown";restoreAppRoute()');assert.equal(a.run('activeApp'),'platform');
 });
-test('platform summaries show current budget and real pending purchase counts',()=>{
-  const a=app();addPurchase(a);a.run('cur().start=100000;movePeriod(-1);openPlatform()');const page=a.run('platformPage()');assert.ok(page.includes('58,000원'));assert.ok(page.includes('장보기 1건'));assert.ok(page.includes('등록 대기 <b>1건</b>'));
+test('platform shows app launchers and real pending alerts without exposing budget or inventory previews',()=>{
+  const a=app();assert.equal(a.run('platformAlerts().length'),0);addPurchase(a);a.run('cur().start=100000;movePeriod(-1);openPlatform()');const page=a.run('platformPage()');assert.ok(!page.includes('58,000원'));assert.ok(!page.includes('이번 기간 남은 예산'));assert.ok(!page.includes('보관 중인 식재료'));assert.ok(page.includes('식재료 등록 대기 1건'));assert.ok(page.includes('id="platformPendingAlert"'));
+});
+test('ledger alerts include due unconfirmed expenses and disappear once handled',()=>{
+  const a=app();a.run(`cur().fixed=[{name:'확인할 지출',amt:10000,day:Number(today().slice(-2))},{name:'확인한 지출',amt:10000,day:1,done:true}];cur().plan=[{id:999,type:'plan',amt:5000,date:today(),cat:'식비',memo:'확정할 예정'},{id:1000,type:'plan',amt:5000,date:'2999-01-01',cat:'식비',memo:'나중 예정'}]`);
+  const alerts=a.json('ledgerPlatformAlerts()');assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('고정지출 1건'));assert.ok(alerts[0].text.includes('예정지출 1건'));
+  a.run('cur().fixed[0].done=true;cur().plan.shift()');assert.equal(a.run('ledgerPlatformAlerts().length'),0);
 });
 test('cancelling navigation preserves unsaved product inputs and the current app',()=>{
   const a=app();a.run('openApp("fridge");openFoodSheet()');a.el('fdName').value='아직 입력 중';a.context.confirm=()=>false;

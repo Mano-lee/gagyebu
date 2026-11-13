@@ -69,9 +69,13 @@ let browser,socket,profile;
   assert.equal(await evaluate('document.querySelector(".platform-logo").complete && document.querySelector(".platform-logo").naturalWidth>0'),true);
   assert.equal(await evaluate(`fetch('manifest.webmanifest').then(r=>r.json()).then(m=>m.name==='내 생활'&&m.icons.every(i=>i.src.startsWith('app-icon-')))`),true);
   assert.equal(await evaluate('getComputedStyle($("appShell")).display'),'none');
+  assert.equal(await evaluate('document.querySelectorAll(".platform-apps .app-launch").length===PLATFORM_APPS.length'),true);
+  assert.equal(await evaluate('document.querySelector(".app-summary,.app-metric,.app-description,.app-enter")===null'),true);
+  assert.equal(await evaluate('document.querySelector(".platform-alerts")===null'),true);
   for(const [width,height,name] of [[390,844,'platform-mobile'],[360,800,'platform-small-mobile'],[1280,900,'platform-desktop']]){
     await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<960});
     assert.ok(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'),`Platform overflow at ${width}px`);
+    assert.ok(await evaluate('$("t-fridge").getBoundingClientRect().left>$("t-ledger").getBoundingClientRect().right'),`App icons must share a row at ${width}px`);
     const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(shot.data,'base64'));
   }
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
@@ -84,7 +88,8 @@ let browser,socket,profile;
   assert.equal(await evaluate('foodItems().length'),0);
   assert.equal(await evaluate('calc(S.cur).spent'),42000);
   await evaluate(`$('backToPlatform').click()`);
-  assert.equal(await evaluate('document.querySelector("#platformPending").textContent.includes("1건")'),true);
+  assert.equal(await evaluate('document.querySelector("#platformPendingAlert").textContent.includes("1건")'),true);
+  assert.ok(await evaluate('document.querySelector(".platform-alerts").getBoundingClientRect().bottom<=document.querySelector(".platform-apps").getBoundingClientRect().top'),'App alerts must appear above icons');
   const alertShot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(out,'platform-notification.png'),Buffer.from(alertShot.data,'base64'));
   await evaluate(`$('platformPendingAlert').click();document.querySelector('.food-task .food-actions .btn').click()`);
   assert.equal(await evaluate('getComputedStyle($("ledgerHeader")).display'),'none');
@@ -104,6 +109,10 @@ let browser,socket,profile;
   assert.equal(await evaluate(`$('storage-frozen').textContent.includes('임박 1')`),true);
   assert.equal(await evaluate(`$('storage-chilled').textContent.includes('기한 미입력 1')`),true);
   assert.equal(await evaluate(`$('storage-pantry').textContent.includes('기한 지남 1')`),true);
+  await evaluate('openPlatform()');
+  assert.equal(await evaluate('$("platformSoonAlert").textContent.includes("2개 품목")'),true);
+  await evaluate('$("platformSoonAlert").click()');assert.equal(await evaluate('foodView'),'soon');assert.equal(await evaluate('document.querySelectorAll(".food-grid article").length'),2);
+  await evaluate('openApp("fridge")');
   for(const store of ['chilled','frozen','pantry']){
     await evaluate(`$('storage-${store}').click()`);
     assert.equal(await evaluate('foodStore'),store);
@@ -199,7 +208,7 @@ let browser,socket,profile;
   assert.equal(await evaluate(`$('storage-pantry').textContent.includes('기한 지남 1')`),true);
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.food-grid')).display`),'grid');
   assert.equal(errors.length,0,errors.join('\n'));
-  console.log('PASS: platform/storage/quantity flows; no opening UI; cumulative expiry taps, mixed durations, purchase-date recalculation, manual-date extension, reset and month-end handling; mobile layouts and offline persistence.');
+  console.log('PASS: icon-only platform, conditional app alerts above icons and notification navigation; storage/quantity/cumulative expiry flows; mobile layouts and offline persistence.');
   console.log('Screenshots: .qa-preview/platform-mobile.png, .qa-preview/platform-desktop.png, .qa-preview/mobile.png');
   await send('Browser.close',{},false).catch(()=>{});
 })().catch(error=>{console.error(error);process.exitCode=1}).finally(async()=>{

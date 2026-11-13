@@ -1,7 +1,7 @@
 // 새 앱은 이 목록에 추가한다. 앱 선택과 공통 설정은 개별 앱 메뉴와 분리한다.
 const PLATFORM_APPS=[
-  {id:'ledger',name:'가계부',description:'수입과 지출, 남은 예산을 확인해요.',icon:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M15 13h6M6 5V3h12"/>'},
-  {id:'fridge',name:'냉장고',description:'장을 본 기록을 식재료로 정리해요.',icon:'<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M5 10h14M8 6v1M8 14v3"/>'}
+  {id:'ledger',name:'가계부',icon:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M15 13h6M6 5V3h12"/>',alerts:ledgerPlatformAlerts},
+  {id:'fridge',name:'냉장고',icon:'<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M5 10h14M8 6v1M8 14v3"/>',alerts:fridgePlatformAlerts}
 ];
 let activeApp='platform',fridgeSection='active',currentAppRoute={id:'platform',section:''};
 
@@ -58,20 +58,25 @@ function updatePlatformShell(){
   });
   document.title=hub?(activeApp==='settings'?'공통 설정 · 내 생활':'내 생활'):(ledger?'가계부':'냉장고')+' · 내 생활';
 }
+function ledgerPlatformAlerts(){
+  const key=periodOf(today()),period=S.p[key];if(!period)return [];
+  let fixed=period.fixed.filter(f=>!f.done&&daysLeft(key,f)<=0).length;
+  const bill=cardBill(key);if(bill.amt&&!period.cardDone&&daysLeft(key,{day:cardDay()})<=0)fixed++;
+  const plans=(period.plan||[]).filter(t=>t.date<=today()).length;
+  return fixed||plans?[{id:'platformLedgerAlert',section:'home',text:[fixed?`확인할 고정지출 ${fixed}건`:'',plans?`확정할 예정지출 ${plans}건`:''].filter(Boolean).join(' · ')}]:[];
+}
+function fridgePlatformAlerts(){
+  const alerts=[],pending=pendingFoodTasks().length;
+  const soon=foodItems().filter(f=>f.status==='active'&&foodDays(f.bestBefore)!==null&&foodDays(f.bestBefore)<=3).length;
+  if(pending)alerts.push({id:'platformPendingAlert',section:'pending',text:`식재료 등록 대기 ${pending}건`});
+  if(soon)alerts.push({id:'platformSoonAlert',section:'soon',text:`기한 임박·경과 ${soon}개 품목`});
+  return alerts;
+}
+function platformAlerts(){return PLATFORM_APPS.flatMap(app=>(app.alerts?app.alerts():[]).map(alert=>({...alert,app})))}
 function platformPage(){
-  // 홈의 예산은 사용자가 마지막으로 보고 있던 과거 기간과 무관하게 현재 기간을 표시한다.
-  const key=periodOf(today()),period=ensure(key),budget=calc(key),pending=pendingFoodTasks().length;
-  const active=foodItems().filter(f=>f.status==='active');
-  const soon=active.filter(f=>{const n=foodDays(f.bestBefore);return n!==null&&n<=3}).length;
-  const summaries={
-    ledger:`<div class="app-metric"><span>이번 기간 남은 예산</span><strong>${period.start===null?'잔고 미입력':won(budget.remain)}</strong></div><p class="app-detail">${esc(periodLabel(key))}</p>`,
-    fridge:`<div class="app-metric"><span>보관 중인 식재료</span><strong>${active.length}<small>개 품목</small></strong></div><div class="app-shortcuts"><button id="platformPending" onclick="openApp('fridge','pending')">등록 대기 <b>${pending}건</b><span aria-hidden="true">›</span></button><button id="platformSoon" onclick="openApp('fridge','soon')">기한 임박·경과 <b>${soon}개</b><span aria-hidden="true">›</span></button></div>`
-  };
-  return `<section class="platform-intro"><p class="platform-eyebrow">나의 생활 공간</p><h1>오늘도, 내 생활</h1><p>필요한 앱을 열고 일상을 이어가세요.</p></section>
-  ${pending?`<section class="platform-alert" aria-label="식재료 등록 알림"><div><span class="platform-alert-dot" aria-hidden="true"></span><div><strong>구매한 식재료가 기다리고 있어요.</strong><p>장보기 ${pending}건의 제품 정보를 등록해 주세요.</p></div></div><button id="platformPendingAlert" onclick="openApp('fridge','pending')">등록하러 가기 <span aria-hidden="true">→</span></button></section>`:''}
-  <div class="platform-section-title"><h2>내 앱 <span>${PLATFORM_APPS.length}</span></h2><p>한곳에서 관리하는 일상</p></div>
-  <section class="platform-apps" aria-label="내 앱">${PLATFORM_APPS.map(app=>`<article class="app-card app-${app.id}"><button id="t-${app.id}" class="app-launch" onclick="openApp('${app.id}')"><span class="app-icon">${appIcon(app)}</span><span class="app-launch-text"><span class="app-name">${esc(app.name)}</span><span class="app-description">${esc(app.description)}</span></span><span class="app-arrow" aria-hidden="true">↗</span></button><div class="app-summary">${summaries[app.id]||''}</div><button class="app-enter" onclick="openApp('${app.id}')">${esc(app.name)} 열기 <span aria-hidden="true">→</span></button></article>`).join('')}</section>
-  <p class="platform-footnote">동기화와 백업은 <button onclick="openSharedSettings()">공통 설정</button>에서 함께 관리해요.</p>`;
+  const alerts=platformAlerts();
+  return `${alerts.length?`<section class="platform-alerts" aria-label="앱 알림"><h1>알림 <span>${alerts.length}</span></h1>${alerts.map(alert=>`<button id="${alert.id}" class="platform-alert" data-app="${alert.app.id}" onclick="openApp('${alert.app.id}','${alert.section}')"><span class="alert-app-icon app-${alert.app.id}" aria-hidden="true">${appIcon(alert.app)}</span><span class="platform-alert-copy"><span class="platform-alert-app">${esc(alert.app.name)}</span><span class="platform-alert-text">${esc(alert.text)}</span></span><span class="platform-alert-arrow" aria-hidden="true">›</span></button>`).join('')}</section>`:''}
+  <section class="platform-apps" aria-label="내 앱">${PLATFORM_APPS.map(app=>`<button id="t-${app.id}" class="app-launch app-${app.id}" onclick="openApp('${app.id}')" aria-label="${esc(app.name)} 열기"><span class="app-icon">${appIcon(app)}</span><span class="app-name">${esc(app.name)}</span></button>`).join('')}</section>`;
 }
 
 window.addEventListener('popstate',restoreAppRoute);
