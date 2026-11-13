@@ -153,6 +153,33 @@ test('backup validation rejects unsafe inventory IDs and malformed inventory',()
   const a=app();assert.throws(()=>a.run('prepareFoodData({p:{},foods:[]})'));
   assert.throws(()=>a.run(`prepareFoodData({p:{},foods:{"bad'":{id:"bad'",name:'x',store:'chilled',status:'active',quantity:1}}})`));
 });
+test('expiry day/week shortcuts use purchase date rather than today or the previous expiry',()=>{
+  const a=app();assert.equal(a.run('foodPresetDate("2026-12-31","1d")'),'2027-01-01');assert.equal(a.run('foodPresetDate("2026-12-28","1w")'),'2027-01-04');
+  a.run('openFoodSheet()');a.el('fdBought').value='2026-11-13';a.run('chooseFoodExpiry("1w");chooseFoodExpiry("1w")');assert.equal(a.el('fdExpiry').value,'2026-11-20');
+});
+test('expiry month shortcuts clamp month ends and handle leap years without using fixed-day approximations',()=>{
+  const a=app();
+  for(const [source,preset,expected] of [['2026-01-31','1m','2026-02-28'],['2024-01-31','1m','2024-02-29'],['2026-01-31','3m','2026-04-30'],['2023-08-31','6m','2024-02-29'],['2026-11-13','6m','2027-05-13']])assert.equal(a.run(`foodPresetDate('${source}','${preset}')`),expected);
+});
+test('expiry shortcuts reject missing or invalid purchase dates without overwriting an existing expiry',()=>{
+  const a=app();for(const date of ['',null,'2026-02-30','2026-13-01','invalid']){a.context.date=date;assert.equal(a.run('foodPresetDate(date,"1m")'),null)}
+  assert.equal(a.run('foodPresetDate("2026-11-13","invalid")'),null);a.run('openFoodSheet()');a.el('fdBought').value='';a.el('fdExpiry').value='2026-12-01';assert.equal(a.run('chooseFoodExpiry("1w")'),false);assert.equal(a.el('fdExpiry').value,'2026-12-01');
+});
+test('changing purchase date recalculates a selected expiry shortcut and blocks saving until purchase date is present',()=>{
+  const a=app();a.run('openFoodSheet()');a.el('fdBought').value='2024-01-31';a.run('chooseFoodExpiry("1m")');a.el('fdBought').value='2024-02-29';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2024-03-29');
+  a.el('fdBought').value='';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'');a.el('fdName').value='우유';assert.equal(a.run('saveFood()'),false);assert.equal(a.run('foodItems().length'),0);
+});
+test('manual expiry clears the shortcut and subsequent purchase-date changes leave the manual date unchanged',()=>{
+  const a=app();a.run('openFoodSheet()');a.el('fdBought').value='2026-01-31';a.run('chooseFoodExpiry("1m")');a.el('fdExpiry').value='2026-03-10';a.run('manualFoodExpiry()');a.el('fdBought').value='2026-02-02';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2026-03-10');assert.equal(a.run('foodExpiryPreset'),null);
+});
+test('saved expiry shortcuts reopen selected and survive reload, while batch registration resets the next product',()=>{
+  const a=app(),purchase=addPurchase(a);a.run(`openFoodTask(${purchase})`);a.el('fdBought').value='2026-01-31';a.run('chooseFoodExpiry("1m")');const id=addFood(a);assert.equal(a.run('foodExpiryPreset'),null);assert.equal(a.el('fdExpiry').value,'');
+  assert.equal(a.run(`S.foods['${id}'].bestBefore`),'2026-02-28');const b=app(JSON.parse(a.memory.get('my-gagyebu-v2')));b.run(`editFood('${id}')`);assert.equal(b.run('foodExpiryPreset'),'1m');assert.equal(b.el('fdExpiry').value,'2026-02-28');
+  b.el('fdExpiry').value='2026-03-05';b.run('manualFoodExpiry();saveFood()');assert.equal(b.run(`S.foods['${id}'].expiryPreset`),undefined);
+});
+test('existing manually entered expiry dates remain unchanged when editing purchase date',()=>{
+  const a=app(),id=addStock(a,2);a.run(`S.foods['${id}'].bestBefore='2026-12-01';editFood('${id}')`);a.el('fdBought').value='2026-11-20';a.run('changeFoodBought()');assert.equal(a.el('fdExpiry').value,'2026-12-01');assert.equal(a.run('foodExpiryPreset'),null);
+});
 test('one-tap use reduces only the selected batch and keeps initial and remaining amounts across reloads',()=>{
   const a=app(),id=addStock(a,10);addStock(a,3,'통');a.run(`useFood('${id}');useFood('${id}')`);
   assert.equal(a.run(`S.foods['${id}'].quantity`),8);assert.equal(a.run(`S.foods['${id}'].initialQuantity`),10);assert.equal(a.run('foodItems()[1].quantity'),3);

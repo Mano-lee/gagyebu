@@ -110,6 +110,9 @@
 .food-task-summary .btn{flex:none;width:auto;margin:0;font-size:13px}
 .food-task-summary strong{display:block;margin-bottom:5px;font-size:14px}
 .food-form small{display:block;margin:-4px 0 12px}
+.food-expiry-presets{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;margin:0 0 8px}
+.food-expiry-presets .chip{padding:9px 2px;border-radius:9px;min-width:0;font-size:12px;white-space:nowrap}
+.food-expiry-hint{margin:0 0 10px;font-size:11px;color:var(--accent);line-height:1.6;overflow-wrap:anywhere}
 button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(min-width:650px){.food-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.storage-overview{padding:22px 28px 16px}.storage-scene{gap:48px;padding-top:24px}.fridge-appliance{grid-template-rows:minmax(132px,.9fr) minmax(164px,1.1fr);padding:9px;gap:8px}.storage-door{padding:16px 25px 16px 18px}.storage-count strong{font-size:35px}.storage-count small,.storage-badge,.storage-note{font-size:11px}.storage-label{font-size:14px}.pantry-body{min-height:204px;padding:26px 18px 18px}.pantry-label{padding:16px}.storage-footnote{text-align:center;font-size:11px}}
 @media(min-width:960px){.food-heading h1{font-size:27px}.food-form.panel{width:500px}.food-task-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.food-task-grid .card{margin-bottom:0}}

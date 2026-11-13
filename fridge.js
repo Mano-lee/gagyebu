@@ -4,6 +4,8 @@ const FOOD_STATES={active:'보관 중',consumed:'다 먹음',discarded:'폐기'}
 let foodStore='all',foodView='active',foodQuery='';
 let foodEditId=null,foodTaskId=null,foodDraftBaseline='';
 let foodPreviousFocus=null;
+let foodExpiryPreset=null;
+const FOOD_EXPIRY_PRESETS={'1d':{label:'1일',days:1},'1w':{label:'1주',days:7},'1m':{label:'1개월',months:1},'3m':{label:'3개월',months:3},'6m':{label:'6개월',months:6}};
 let lastFoodUse=null;
 const FOOD_COUNT_UNITS=new Set(['개','통','팩','봉','봉지','병','캔','컵','장','쪽','모','알','덩이','덩어리','조각','인분','회분','세트','포','줄','롤','묶음','판','마리','상자']);
 const foodAmount=n=>Number(n).toLocaleString('ko-KR',{maximumSignificantDigits:12});
@@ -161,6 +163,36 @@ function skipFoodTask(id){
 }
 function openFoodTask(id){const t=sourceTx(id);if(!t||!t.foodStores?.length)return;openFoodSheet(null,id)}
 function editFood(id){openFoodSheet(id)}
+function foodPresetDate(purchasedAt,preset){
+  if(!Object.hasOwn(FOOD_EXPIRY_PRESETS,preset)||!/^\d{4}-\d{2}-\d{2}$/.test(purchasedAt||''))return null;
+  const date=new Date(purchasedAt+'T00:00:00Z');
+  if(!Number.isFinite(date.getTime())||date.getUTCFullYear()<1||date.toISOString().slice(0,10)!==purchasedAt)return null;
+  const offset=FOOD_EXPIRY_PRESETS[preset];
+  if(offset.days)date.setUTCDate(date.getUTCDate()+offset.days);
+  else{
+    const day=date.getUTCDate();date.setUTCDate(1);date.setUTCMonth(date.getUTCMonth()+offset.months);
+    const end=new Date(date);end.setUTCMonth(end.getUTCMonth()+1,0);
+    date.setUTCDate(Math.min(day,end.getUTCDate()));
+  }
+  return date.getUTCFullYear()<=9999?date.toISOString().slice(0,10):null;
+}
+function updateFoodExpiryUI(){
+  document.querySelectorAll('#fdExpiryPresets button').forEach(button=>{
+    const selected=button.dataset.preset===foodExpiryPreset;
+    button.classList.toggle('on',selected);button.setAttribute('aria-pressed',String(selected));
+  });
+  $('fdExpiryHint').textContent=foodExpiryPreset?($('fdExpiry').value?`${$('fdBought').value} 구매일 기준 → ${$('fdExpiry').value}`:'구매일을 선택하면 기한을 계산해요.'):'구매일로부터 선택한 기간 뒤의 날짜를 채워요.';
+}
+function chooseFoodExpiry(preset){
+  const date=foodPresetDate($('fdBought').value,preset);
+  if(!date){alert('구매일을 먼저 올바르게 입력해 주세요.');$('fdBought').focus();return false}
+  foodExpiryPreset=preset;$('fdExpiry').value=date;updateFoodExpiryUI();return true;
+}
+function changeFoodBought(){
+  if(foodExpiryPreset)$('fdExpiry').value=foodPresetDate($('fdBought').value,foodExpiryPreset)||'';
+  updateFoodExpiryUI();
+}
+function manualFoodExpiry(){foodExpiryPreset=null;updateFoodExpiryUI()}
 function openFoodSheet(id=null,taskId=null){
   foodPreviousFocus=document.activeElement;
   foodEditId=id;foodTaskId=taskId;
@@ -176,6 +208,8 @@ function openFoodSheet(id=null,taskId=null){
   $('fdUnit').value=f?f.unit||'개':'개';
   $('fdBought').value=f?f.purchasedAt||'':t?t.date:today();
   $('fdExpiry').value=f?f.bestBefore||'':'';
+  foodExpiryPreset=f&&f.expiryPreset&&foodPresetDate($('fdBought').value,f.expiryPreset)===$('fdExpiry').value?f.expiryPreset:null;
+  updateFoodExpiryUI();
   $('fdOpened').checked=!!(f&&f.openedAt);
   $('fdOpenedAt').value=f&&f.openedAt||today();
   $('fdOpenedAt').max=today();
@@ -191,7 +225,7 @@ function openFoodSheet(id=null,taskId=null){
   foodDraftBaseline=foodDraft();
   setTimeout(()=>$('fdName').focus(),50);
 }
-function foodDraft(){return JSON.stringify(['fdName','fdStore','fdQty','fdUnit','fdBought','fdExpiry','fdOpenedAt','fdStatus'].map(id=>$(id).value).concat($('fdOpened').checked))}
+function foodDraft(){return JSON.stringify(['fdName','fdStore','fdQty','fdUnit','fdBought','fdExpiry','fdOpenedAt','fdStatus'].map(id=>$(id).value).concat($('fdOpened').checked,foodExpiryPreset))}
 function closeFoodSheet(force=false){
   if(!force&&foodDraft()!==foodDraftBaseline&&!confirm('아직 저장하지 않은 입력을 닫을까요?\n이미 저장한 식재료는 그대로 남아요.'))return;
   $('foodSheet').classList.remove('show');
@@ -212,6 +246,7 @@ function saveFood(event,finish=false){
   if(event)event.preventDefault();
   const name=$('fdName').value.trim(),quantity=Number($('fdQty').value),store=$('fdStore').value;
   const old=foodEditId&&(S.foods||{})[foodEditId],status=old?$('fdStatus').value:'active';
+  if(foodExpiryPreset&&!foodPresetDate($('fdBought').value,foodExpiryPreset)){alert('기한을 계산할 구매일을 입력해 주세요.');$('fdBought').focus();return false}
   if(!name){alert('제품 이름을 입력해 주세요.');$('fdName').focus();return false}
   if(!Number.isFinite(quantity)||quantity<0||(status!=='consumed'&&quantity===0)){alert('보관할 수량은 0보다 큰 숫자로 입력해 주세요.');$('fdQty').focus();return false}
   const openedAt=$('fdOpened').checked?$('fdOpenedAt').value:null;
@@ -223,6 +258,7 @@ function saveFood(event,finish=false){
   const initialQuantity=old&&unit===(old.unit||'개')?Math.max(old.initialQuantity??old.quantity,quantity):quantity;
   const storedQuantity=status==='consumed'&&quantity===0?(old&&old.restoreQuantity>0?old.restoreQuantity:old&&old.quantity>0?old.quantity:1):quantity;
   const f={...old,id,name,store,quantity:storedQuantity,initialQuantity,unit,purchasedAt:$('fdBought').value||null,bestBefore:$('fdExpiry').value||null,openedAt};
+  if(foodExpiryPreset&&foodPresetDate(f.purchasedAt,foodExpiryPreset)===f.bestBefore)f.expiryPreset=foodExpiryPreset;else delete f.expiryPreset;
   if(t){f.txId=t.id;f.sourceMemo=foodSourceText(t)}
   applyFoodStatus(f,status);
   (S.foods||(S.foods={}))[id]=f;
@@ -230,6 +266,7 @@ function saveFood(event,finish=false){
   save();render();
   if(!t||finish){closeFoodSheet(true);return true}
   $('fdName').value='';$('fdQty').value=1;$('fdExpiry').value='';$('fdOpened').checked=false;$('fdOpenedAt').value=today();toggleFoodOpened();
+  foodExpiryPreset=null;updateFoodExpiryUI();
   $('fdNotice').textContent=`${name} 저장했어요. 다음 제품을 추가하거나 등록 완료를 눌러 주세요.`;
   updateFoodTaskProgress();foodDraftBaseline=foodDraft();$('fdName').focus();return true;
 }
