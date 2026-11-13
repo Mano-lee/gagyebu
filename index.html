@@ -283,6 +283,7 @@ nav button.on{color:var(--accent);font-weight:700}
       <div class="food-expiry-hint-row"><p id="fdExpiryHint" class="food-expiry-hint" role="status">누를 때마다 현재 기한에 더해요. 기한이 없으면 구매일부터 시작해요.</p><button type="button" class="food-expiry-reset" onclick="resetFoodExpiry()">초기화</button></div>
       <small class="food-help">포장에 적힌 소비기한·유통기한을 입력하세요. 모르면 비워 두어도 돼요.</small>
       <div id="fdStatusRow" class="food-status-row" hidden><label for="fdStatus">사용 상태</label><select id="fdStatus" onchange="syncFoodStatusInput()"><option value="active">보관 중</option><option value="consumed">다 먹음</option><option value="discarded">폐기</option></select></div>
+      <details id="fdExtra" class="food-extra" hidden><summary>추가 정보</summary><div id="fdExtraInfo"></div></details>
       <button id="fdSave" class="btn" type="submit">식재료 저장</button>
       <button id="fdFinish" class="btn ghost" type="button" onclick="finishFoodTask()" hidden>등록 완료</button>
       <button id="fdDelete" class="btn danger" type="button" onclick="deleteFood()" hidden>식재료 기록 삭제</button>

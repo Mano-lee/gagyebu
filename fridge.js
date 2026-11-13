@@ -133,13 +133,9 @@ function foodUseNotice(){
   return `<div class="food-use-toast" role="status"><span>${esc(a.name)} ${foodAmount(a.used)}${esc(a.unit)} 사용 · ${remaining>0?`${foodAmount(remaining)}${esc(a.unit)} 남음`:'다 먹었어요'}</span><button id="undoFoodUse" onclick="undoFoodUse()">되돌리기</button><button class="food-use-dismiss" onclick="dismissFoodUse()" aria-label="수량 변경 알림 닫기">×</button></div>`;
 }
 function foodCard(f){
-  const expiry=foodExpiry(f),t=sourceTx(f.txId),src=t?foodSourceText(t):f.sourceMemo,unit=f.unit||'개',initial=f.initialQuantity??f.quantity,remaining=foodRemaining(f);
-  return `<article class="card" data-food-id="${f.id}"><div class="food-card-top"><button class="food-name" onclick="editFood('${f.id}')">${esc(f.name)}</button><span class="food-store ${f.store}">${FOOD_STORES[f.store]}</span></div>
-  <div class="food-quantity"><div><span class="food-quantity-label">${f.status==='discarded'?'폐기 수량':'남은 수량'}</span><strong>${foodAmount(remaining)}<small>${esc(unit)}</small></strong>${initial>0?`<span class="food-quantity-initial">처음 ${foodAmount(initial)}${esc(unit)}</span>`:''}</div>${f.status==='active'&&foodCountable(f)?`<button id="use-${f.id}" class="food-use" onclick="useFood('${f.id}')" aria-label="${esc(f.name)} ${foodAmount(Math.min(1,remaining))}${esc(unit)} 사용, 현재 ${foodAmount(remaining)}${esc(unit)} 남음"><span aria-hidden="true">−</span>${foodAmount(Math.min(1,remaining))}${esc(unit)} 사용</button>`:f.status==='active'?`<button class="food-quantity-edit" onclick="editFood('${f.id}')">남은 양 수정</button>`:''}</div>
-  <div class="food-dates">구매 ${esc(f.purchasedAt||'미입력')}${f.status!=='active'?`<br>${FOOD_STATES[f.status]} ${esc(f.finishedAt||'')}`:''}</div>
-  <span class="food-expiry ${expiry.cls}">${esc(expiry.text)}</span>
-  ${src?`<div style="margin-top:10px">${t?`<button class="food-source" onclick="openSheet(${t.id})">구매 내역 · ${esc(src)} ›</button>`:`<span class="food-help">구매 메모 · ${esc(src)} (원래 지출 없음)</span>`}</div>`:''}
-  <div class="food-actions">${f.status==='active'?`<button class="btn ghost" onclick="changeFoodState('${f.id}','consumed')">다 먹음</button><button class="btn ghost" onclick="changeFoodState('${f.id}','discarded')">폐기</button>`:`<button class="btn ghost" onclick="changeFoodState('${f.id}','active')">보관 중으로 복원</button>`}<button class="btn ghost" onclick="editFood('${f.id}')">수정</button></div></article>`;
+  const expiry=foodExpiry(f),unit=f.unit||'개',remaining=foodRemaining(f);
+  return `<article class="card food-row" data-food-id="${f.id}"><button type="button" class="food-row-main" onclick="editFood('${f.id}')" aria-label="${esc(f.name)} 수정, 남은 수량 ${foodAmount(remaining)}${esc(unit)}, ${esc(expiry.text)}"><span class="food-row-copy"><span class="food-name">${esc(f.name)}</span><span class="food-row-meta">${foodStore==='all'?`<span class="food-store ${f.store}">${FOOD_STORES[f.store]}</span>`:''}<span class="food-expiry ${expiry.cls}" title="${esc(expiry.text)}">${esc(expiry.text.replace('표시 기한 ',''))}</span>${f.status!=='active'?`<span class="food-row-state">${FOOD_STATES[f.status]}</span>`:''}</span></span><span class="food-quantity"><strong>${foodAmount(remaining)}<small>${esc(unit)}</small></strong></span><span class="food-row-chevron" aria-hidden="true">›</span></button>
+  ${f.status==='active'&&foodCountable(f)?`<button type="button" id="use-${f.id}" class="food-use" onclick="useFood('${f.id}')" aria-label="${esc(f.name)} ${foodAmount(Math.min(1,remaining))}${esc(unit)} 사용, 현재 ${foodAmount(remaining)}${esc(unit)} 남음"><span aria-hidden="true">−</span>${foodAmount(Math.min(1,remaining))}${esc(unit)} 사용</button>`:f.status!=='active'?`<button type="button" class="food-restore" onclick="changeFoodState('${f.id}','active')" aria-label="${esc(f.name)} 보관 중으로 복원">복원</button>`:''}</article>`;
 }
 function fridgePage(){
   const all=foodItems(),active=all.filter(f=>f.status==='active'),soon=active.filter(f=>{const d=foodDays(f.bestBefore);return d!==null&&d<=3}),pending=pendingFoodTasks();
@@ -213,6 +209,9 @@ function openFoodSheet(id=null,taskId=null){
   $('fdTitle').textContent=f?'식재료 수정':t?'구매 식재료 등록':'식재료 직접 등록';
   $('fdSource').hidden=!t;
   $('fdSource').innerHTML=t?`<strong>${esc(t.memo||t.cat)}</strong><br>${t.date} · 결제 ${won(t.amt)} · ${t.foodStores.filter(s=>Object.hasOwn(FOOD_STORES,s)).map(s=>FOOD_STORES[s]).join(' · ')}<div class="food-help">구매 금액은 가계부에 한 번만 기록돼요. 제품별 가격은 입력하지 않아도 돼요.</div>`:'';
+  const linked=f&&sourceTx(f.txId),source=linked?foodSourceText(linked):f&&f.sourceMemo;
+  $('fdExtra').hidden=!f;$('fdExtra').open=false;
+  $('fdExtraInfo').innerHTML=f?`<p>처음 수량 · ${foodAmount(f.initialQuantity??f.quantity)}${esc(f.unit||'개')}</p>${source?`<p>${linked?'연결된 장보기':'구매 메모'} · ${esc(source)}</p>`:''}${f.finishedAt?`<p>${FOOD_STATES[f.status]} · ${esc(f.finishedAt)}</p>`:''}`:'';
   $('fdName').value=f?f.name:'';
   $('fdStore').value=f?f.store:t?t.foodStores[0]:'chilled';
   if(!Object.hasOwn(FOOD_STORES,$('fdStore').value))$('fdStore').value='chilled';

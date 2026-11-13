@@ -93,6 +93,11 @@ test('one purchase registers separate product batches and stays pending until ma
   assert.equal(a.run('foodItems().length'),2);assert.equal(a.run('cur().tx.length'),1);assert.ok(a.json('foodItems()').every(f=>f.txId===id&&f.purchasedAt===date));
   a.run('finishFoodTask()');assert.equal(a.run('pendingFoodTasks().length'),0);assert.equal(a.run('cur().tx[0].foodState'),'done');
 });
+test('editing a linked ingredient changes only that ingredient and keeps purchase details collapsed',()=>{
+  const a=app(),purchase=addPurchase(a);a.run(`openFoodTask(${purchase})`);const food=addFood(a),before=a.json(`findTx(${purchase}).t`);
+  a.run(`closeFoodSheet(true);editFood('${food}')`);assert.equal(a.run('foodEditId'),food);assert.equal(a.el('fdTitle').textContent,'식재료 수정');assert.equal(a.el('fdExtra').open,false);assert.ok(a.el('fdExtraInfo').innerHTML.includes('마트'));
+  a.el('fdName').value='저지방 우유';a.el('fdQty').value='3';a.run('saveFood()');assert.equal(a.run(`S.foods['${food}'].txId`),purchase);assert.equal(a.run(`S.foods['${food}'].name`),'저지방 우유');assert.equal(a.run(`S.foods['${food}'].quantity`),3);assert.deepEqual(a.json(`findTx(${purchase}).t`),before);
+});
 test('finish can save the last entered product and complete the purchase together',()=>{
   const a=app(),id=addPurchase(a);a.run(`openFoodTask(${id})`);a.el('fdName').value='두부';a.run('finishFoodTask()');assert.equal(a.run('foodItems().length'),1);assert.equal(a.run('pendingFoodTasks().length'),0);
 });
