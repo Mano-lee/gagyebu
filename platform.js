@@ -5,7 +5,7 @@ const PLATFORM_APPS=[
 ];
 let activeApp='platform',fridgeSection='active',currentAppRoute={id:'platform',section:''};
 // history.back()은 비동기다. 닫기 직후 새 창이나 앱을 열면 popstate 이후에 그 이동을 이어간다.
-let foodHistoryBackPending=false,foodHistoryNextDialog=null,foodHistoryNextRoute=null;
+let sheetHistoryBackPending=false,sheetHistoryNextDialog=null,sheetHistoryNextRoute=null;
 
 function appIcon(app){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${app.icon}</svg>`}
 function openPlatform(){navigateApp('platform')}
@@ -13,8 +13,8 @@ function openApp(id,section=''){navigateApp(id,section)}
 function openSharedSettings(){navigateApp('settings')}
 function navigateApp(id,section=''){
   const route=normalizeAppRoute(id,section);
-  if($('foodSheet').classList.contains('show')&&!closeFoodSheet())return;
-  if(foodHistoryBackPending){foodHistoryNextRoute=route;return}
+  if(!closeAppSheet())return;
+  if(sheetHistoryBackPending){sheetHistoryNextRoute=route;return}
   commitAppRoute(route);
 }
 function commitAppRoute(route){
@@ -27,51 +27,81 @@ function normalizeAppRoute(id,section=''){
   if(id==='fridge')return {id,section:['active','pending','history','soon'].includes(section)?section:'active'};
   return {id:id==='settings'?'settings':'platform',section:''};
 }
-function trackFoodSheetHistory(id,taskId){
-  foodHistoryNextRoute=null;
-  const dialog={id,taskId};
-  if(foodHistoryBackPending){foodHistoryNextDialog=dialog;return}
-  const method=window.history.state?.foodSheet?'replaceState':'pushState';
-  window.history[method]({...window.history.state,foodSheet:dialog},'',window.location.href);
+function currentAppSheet(){
+  if($('foodSheet').classList.contains('show'))return {kind:'food',id:foodEditId,taskId:foodTaskId};
+  if($('sheet').classList.contains('show'))return {kind:'transaction',id:editId,planId:fromPlan,period:S.cur};
+  if($('fxSheet').classList.contains('show'))return {kind:'fixed',index:editFx,period:S.cur,item:editFx===null?null:JSON.stringify(cur().fixed[editFx])};
+  return null;
 }
-function leaveFoodSheetHistory(){
-  foodHistoryNextDialog=null;
-  if(window.history.state?.foodSheet&&!foodHistoryBackPending){foodHistoryBackPending=true;window.history.back()}
+function closeAppSheet(force=false,fromHistory=false){
+  const dialog=currentAppSheet();
+  if(!dialog)return true;
+  if(dialog.kind==='food')return closeFoodSheet(force,fromHistory);
+  if(dialog.kind==='transaction')return closeSheet(force,fromHistory);
+  return closeFx(force,fromHistory);
 }
-function restoreFoodSheetHistory(dialog){
-  if((dialog.id&&!(S.foods||{})[dialog.id])||(dialog.taskId&&!sourceTx(dialog.taskId))){leaveFoodSheetHistory();return}
-  openFoodSheet(dialog.id||null,dialog.taskId||null);
+function appSheetFromState(state){
+  // 이전 버전에서 열린 식재료 창의 기록도 새 공통 처리로 복원한다.
+  return state?.appSheet||(state?.foodSheet?{kind:'food',...state.foodSheet}:null);
 }
-function handleFoodSheetPop(event){
-  if(foodHistoryBackPending){
-    const dialog=foodHistoryNextDialog,route=foodHistoryNextRoute;
-    foodHistoryBackPending=false;foodHistoryNextDialog=foodHistoryNextRoute=null;
-    if(dialog&&$('foodSheet').classList.contains('show'))trackFoodSheetHistory(dialog.id,dialog.taskId);
+function trackAppSheetHistory(dialog=currentAppSheet()){
+  sheetHistoryNextRoute=null;
+  if(sheetHistoryBackPending){sheetHistoryNextDialog=dialog;return}
+  const method=appSheetFromState(window.history.state)?'replaceState':'pushState';
+  const {foodSheet,...state}=window.history.state||{};
+  window.history[method]({...state,appSheet:dialog},'',window.location.href);
+}
+function leaveAppSheetHistory(){
+  sheetHistoryNextDialog=null;
+  if(appSheetFromState(window.history.state)&&!sheetHistoryBackPending){sheetHistoryBackPending=true;window.history.back()}
+}
+function restoreAppSheetHistory(dialog){
+  if(dialog.kind==='food'){
+    if((dialog.id&&!(S.foods||{})[dialog.id])||(dialog.taskId&&!sourceTx(dialog.taskId))){leaveAppSheetHistory();return}
+    openFoodSheet(dialog.id||null,dialog.taskId||null);return;
+  }
+  if(!S.p[dialog.period]){leaveAppSheetHistory();return}
+  if(dialog.kind==='transaction'){
+    if((dialog.id&&!findTx(dialog.id))||(dialog.planId&&findTx(dialog.planId)?.a!=='plan')){leaveAppSheetHistory();return}
+    if(S.cur!==dialog.period){S.cur=dialog.period;selDay=selCat=null;render()}
+    if(dialog.planId)confirmPlan(dialog.planId);else openSheet(dialog.id);
+  }else if(dialog.kind==='fixed'){
+    // 고정지출은 배열로 저장되므로 삭제 후 같은 위치의 다른 항목을 열지 않는다.
+    if(dialog.index!==null&&JSON.stringify(S.p[dialog.period].fixed[dialog.index])!==dialog.item){leaveAppSheetHistory();return}
+    if(S.cur!==dialog.period){S.cur=dialog.period;selDay=selCat=null;render()}
+    openFx(dialog.index===null?undefined:dialog.index);
+  }
+}
+function handleAppSheetPop(event){
+  if(sheetHistoryBackPending){
+    const dialog=sheetHistoryNextDialog,route=sheetHistoryNextRoute;
+    sheetHistoryBackPending=false;sheetHistoryNextDialog=sheetHistoryNextRoute=null;
+    if(dialog&&currentAppSheet())trackAppSheetHistory(dialog);
     else if(route)commitAppRoute(route);
     return true;
   }
-  if($('foodSheet').classList.contains('show')){
-    const id=foodEditId,taskId=foodTaskId;
+  const dialog=currentAppSheet();
+  if(dialog){
     // 취소하면 현재 입력 그대로 수정창의 이동 단계를 다시 등록한다.
-    if(!closeFoodSheet(false,true))trackFoodSheetHistory(id,taskId);
+    if(!closeAppSheet(false,true))trackAppSheetHistory(dialog);
     return true;
   }
-  if(event.state?.foodSheet){
+  const restored=appSheetFromState(event.state);
+  if(restored){
     const [id,section]=(window.location.hash||'').replace(/^#/,'').split('/'),route=normalizeAppRoute(id,section);
-    if(route.id===currentAppRoute.id&&route.section===currentAppRoute.section){restoreFoodSheetHistory(event.state.foodSheet);return true}
+    if(route.id===currentAppRoute.id&&route.section===currentAppRoute.section){restoreAppSheetHistory(restored);return true}
   }
   return false;
 }
 function restoreAppRoute(event){
-  if(event&&handleFoodSheetPop(event))return;
+  if(event&&handleAppSheetPop(event))return;
   const [id,section]=(window.location.hash||'').replace(/^#/,'').split('/');
   if(!applyAppRoute(normalizeAppRoute(id,section))){window.history.replaceState(null,'','#'+currentAppRoute.id+(currentAppRoute.section?'/'+currentAppRoute.section:''));return}
-  if(window.history.state?.foodSheet)restoreFoodSheetHistory(window.history.state.foodSheet);
+  const dialog=appSheetFromState(window.history.state);if(dialog)restoreAppSheetHistory(dialog);
 }
 function applyAppRoute(route){
-  // 이동하기 전에 저장하지 않은 제품 입력을 확인한다.
-  if($('foodSheet').classList.contains('show')&&!closeFoodSheet(false,true))return false;
-  closeSheet();closeFx();
+  // 이동하기 전에 열린 입력창의 저장하지 않은 내용을 확인한다.
+  if(!closeAppSheet(false,true))return false;
   currentAppRoute=route;
   activeApp=route.id;
   if(activeApp==='ledger')tab=route.section;

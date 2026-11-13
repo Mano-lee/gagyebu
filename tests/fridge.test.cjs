@@ -87,7 +87,7 @@ test('cancelling navigation preserves unsaved product inputs and the current app
 test('phone back closes the ingredient editor and preserves the fridge list before leaving the app',()=>{
   const a=app();a.run('openApp("fridge")');const id=addStock(a,3);
   a.run(`foodStore="chilled";foodQuery="milk";editFood('${id}')`);
-  assert.equal(a.run('window.history.state.foodSheet.id'),id);
+  assert.equal(a.run('window.history.state.appSheet.id'),id);
   a.run('window.history.back()');
   assert.equal(a.el('foodSheet').classList.contains('show'),false);
   assert.equal(a.run('activeApp'),'fridge');assert.equal(a.run('foodStore'),'chilled');assert.equal(a.run('foodQuery'),'milk');
@@ -98,7 +98,7 @@ test('phone back closes the ingredient editor and preserves the fridge list befo
 test('cancelling phone back keeps unsaved inputs and a subsequent back can discard them',()=>{
   const a=app();a.run('openApp("fridge")');const id=addStock(a,3),before=a.json(`S.foods['${id}']`);
   a.run(`editFood('${id}')`);a.el('fdName').value='unsaved';a.context.confirm=()=>false;
-  a.run('window.history.back()');assert.equal(a.el('foodSheet').classList.contains('show'),true);assert.equal(a.el('fdName').value,'unsaved');assert.equal(a.run('window.history.state.foodSheet.id'),id);
+  a.run('window.history.back()');assert.equal(a.el('foodSheet').classList.contains('show'),true);assert.equal(a.el('fdName').value,'unsaved');assert.equal(a.run('window.history.state.appSheet.id'),id);
   a.context.confirm=()=>true;a.run('window.history.back()');assert.equal(a.el('foodSheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'fridge');assert.deepEqual(a.json(`S.foods['${id}']`),before);
 });
 
@@ -106,7 +106,7 @@ test('close and save consume the editor history step and permit normal app navig
   for(const action of ['closeFoodSheet()','saveFood()','openSharedSettings()']){
     const a=app();a.run('openApp("fridge")');const id=addStock(a,3);
     a.run(`editFood('${id}');${action}`);assert.equal(a.el('foodSheet').classList.contains('show'),false);
-    assert.equal(a.run('foodHistoryBackPending'),false);assert.equal(a.run('window.history.state?.foodSheet'),undefined);
+    assert.equal(a.run('sheetHistoryBackPending'),false);assert.equal(a.run('window.history.state?.appSheet'),undefined);
     if(action==='openSharedSettings()'){assert.equal(a.run('activeApp'),'settings');a.run('window.history.back()');assert.equal(a.run('activeApp'),'fridge')}
     a.run('window.history.back()');assert.equal(a.run('activeApp'),'platform');
   }
@@ -115,7 +115,87 @@ test('close and save consume the editor history step and permit normal app navig
 test('forward cannot reopen an ingredient that was deleted from its editor',()=>{
   const a=app();a.run('openApp("fridge")');const id=addStock(a,3);
   a.run(`editFood('${id}');deleteFood();window.history.forward()`);
-  assert.equal(a.el('foodSheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'fridge');assert.equal(a.run('window.history.state?.foodSheet'),undefined);
+  assert.equal(a.el('foodSheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'fridge');assert.equal(a.run('window.history.state?.appSheet'),undefined);
+});
+
+test('phone back closes expense, income and planned-entry forms while preserving the ledger view',()=>{
+  for(const type of ['out','in','plan']){
+    const a=app();a.run(`openApp('ledger','list');selDay=today();selCat='food';openSheet();setType('${type}')`);
+    const period=a.run('S.cur'),day=a.run('selDay');a.el('fAmt').value='5000';
+    a.run('window.history.back()');
+    assert.equal(a.el('sheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'ledger');assert.equal(a.run('tab'),'list');
+    assert.equal(a.run('S.cur'),period);assert.equal(a.run('selDay'),day);assert.equal(a.run('selCat'),'food');assert.equal(a.run('cur().tx.length+(cur().plan||[]).length'),0);
+    a.run('window.history.back()');assert.equal(a.run('activeApp'),'platform');
+  }
+});
+
+test('back from an unchanged transaction editor needs no discard prompt and forward reopens it',()=>{
+  const a=app();a.run('openApp("ledger","list")');const id=addPurchase(a),before=a.json('S.p');
+  a.run(`openSheet(${id})`);a.context.confirm=()=>{throw new Error('unchanged editor must not prompt')};
+  a.run('window.history.back()');assert.equal(a.run('activeApp'),'ledger');assert.deepEqual(a.json('S.p'),before);
+  a.run('window.history.forward()');assert.equal(a.run('editId'),id);assert.equal(a.el('sheet').classList.contains('show'),true);
+  a.run('window.history.back();window.history.back()');assert.equal(a.run('activeApp'),'platform');
+});
+
+test('cancelling ledger back or app navigation retains calculator inputs and food flags',()=>{
+  const a=app();a.run('openApp("ledger","list");openSheet();setPay("credit");showDutch(true);setBackMode("mine")');
+  a.el('fAmt').value='10,000 + 5,000';a.el('fBack').value='5000';a.el('fMemo').value='unsaved';a.checks[1].checked=true;
+  const draft=a.run('txDraft()');a.context.confirm=()=>false;
+  for(const action of ['window.history.back()','openSharedSettings()']){
+    a.run(action);assert.equal(a.el('sheet').classList.contains('show'),true);assert.equal(a.run('txDraft()'),draft);assert.equal(a.run('activeApp'),'ledger');assert.equal(a.run('window.history.state.appSheet.kind'),'transaction');
+  }
+  a.context.confirm=()=>true;a.run('window.history.back()');assert.equal(a.el('sheet').classList.contains('show'),false);assert.equal(a.run('cur().tx.length'),0);
+});
+
+test('fixed expense forms close on back and preserve unsaved edits when discard is cancelled',()=>{
+  for(const editing of [false,true]){
+    const a=app();a.run('openApp("ledger","set");cur().fixed=[{name:"Rent",amt:10000,day:5,note:"memo"}]');
+    const before=a.json('cur().fixed');a.run(editing?'openFx(0)':'openFx()');a.el('xNote').value='unsaved';a.context.confirm=()=>false;
+    a.run('window.history.back()');assert.equal(a.el('fxSheet').classList.contains('show'),true);assert.equal(a.el('xNote').value,'unsaved');assert.equal(a.run('window.history.state.appSheet.kind'),'fixed');
+    a.context.confirm=()=>true;a.run('window.history.back()');assert.equal(a.el('fxSheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'ledger');assert.equal(a.run('tab'),'set');assert.deepEqual(a.json('cur().fixed'),before);
+    a.run('window.history.forward()');assert.equal(a.el('fxSheet').classList.contains('show'),true);assert.equal(a.el('xNote').value,editing?'memo':'');
+  }
+});
+
+test('ledger saves, deletes and cancel buttons consume the dialog step before further navigation',()=>{
+  for(const [open,actions] of [
+    ['openSheet(123)',['closeSheet()','saveTx()','delTx()','openSharedSettings()']],
+    ['openFx(0)',['closeFx()','saveFx()','delFixed()','openSharedSettings()']]
+  ])for(const action of actions){
+    const a=app();a.run(`openApp('ledger','list');cur().tx=[{id:123,type:'out',amt:5000,cat:OUT_CATS[0],memo:'Lunch',date:today()}];cur().fixed=[{name:'Rent',amt:10000,day:5}];${open};${action}`);
+    assert.equal(a.el('sheet').classList.contains('show'),false);assert.equal(a.el('fxSheet').classList.contains('show'),false);assert.equal(a.run('sheetHistoryBackPending'),false);assert.equal(a.run('window.history.state?.appSheet'),undefined);
+    if(action==='openSharedSettings()'){assert.equal(a.run('activeApp'),'settings');a.run('window.history.back()');assert.equal(a.run('activeApp'),'ledger')}
+    a.run('window.history.back()');assert.equal(a.run('activeApp'),'platform');
+  }
+});
+
+test('planned expense confirmation restores the correct form without changing the plan on back',()=>{
+  const a=app();a.run(`openApp('ledger');cur().plan=[{id:123,type:'plan',amt:7000,cat:OUT_CATS[0],memo:'Dinner',date:today()}];confirmPlan(123)`);
+  a.context.confirm=()=>{throw new Error('prefilled confirmation is unchanged')};
+  a.run('window.history.back()');assert.equal(a.run('cur().plan.length'),1);assert.equal(a.run('cur().tx.length'),0);
+  a.run('window.history.forward()');assert.equal(a.run('fromPlan'),123);assert.equal(a.el('fAmt').value,'7,000');assert.equal(a.el('sTitle').textContent,'예정 지출 확정');
+});
+
+test('deleted ledger records and shifted fixed-expense indexes do not reopen through forward',()=>{
+  for(const action of ['openSheet(123);delTx()','openFx(0);delFixed()']){
+    const a=app();a.run(`openApp('ledger');cur().tx=[{id:123,type:'out',amt:5000,cat:OUT_CATS[0],memo:'Lunch',date:today()}];cur().fixed=[{name:'Rent',amt:10000,day:5},{name:'Phone',amt:5000,day:10}];${action};window.history.forward()`);
+    assert.equal(a.el('sheet').classList.contains('show'),false);assert.equal(a.el('fxSheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'ledger');assert.equal(a.run('window.history.state?.appSheet'),undefined);
+  }
+});
+
+test('history left by the older fridge-only version restores using the common dialog handler',()=>{
+  const a=app();a.run(`openApp('fridge');window.history.pushState({foodSheet:{id:null,taskId:null}},'',window.location.href);restoreAppRoute()`);
+  assert.equal(a.el('foodSheet').classList.contains('show'),true);assert.equal(a.run('window.history.state.appSheet.kind'),'food');assert.equal(a.run('window.history.state.foodSheet'),undefined);
+  a.run('window.history.back()');assert.equal(a.el('foodSheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'fridge');
+});
+
+test('forward restores the ledger dialog and visible budget period together after changing periods',()=>{
+  for(const open of ['openSheet()','openFx(0)']){
+    const a=app();a.run(`openApp('ledger');cur().fixed=[{name:'Rent',amt:10000,day:5}];render()`);
+    const period=a.run('S.cur'),label=a.el('plabel').textContent;
+    a.run(`${open};window.history.back();movePeriod(1);window.history.forward()`);
+    assert.equal(a.run('S.cur'),period);assert.equal(a.el('plabel').textContent,label);assert.equal(a.run('currentAppSheet()!==null'),true);
+  }
 });
 test('food check creates one pending purchase and no inventory or extra expense',()=>{
   const a=app();addPurchase(a);assert.equal(a.run('pendingFoodTasks().length'),1);assert.equal(a.run('foodItems().length'),0);assert.equal(a.run('cur().tx.length'),1);assert.equal(a.run('calc(S.cur).spent'),42000);assert.equal(a.el('foodNavCount').textContent,1);

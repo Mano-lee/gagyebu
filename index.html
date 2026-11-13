@@ -535,7 +535,10 @@ function delCat(t,i){const l=[...catsOf(t)];if(l.length<2)return alert('분야�
 function toggleFixed(i){const m=cur();if(i==='card')m.cardDone=!m.cardDone;else m.fixed[i].done=!m.fixed[i].done;save();render()}
 
 // ---- 고정지출 추가·수정 ----
+let fxDraftBaseline='',fxPreviousFocus=null;
+function fxDraft(){return JSON.stringify(['xName','xAmt','xDay','xNote'].map(id=>$(id).value))}
 function openFx(i){
+  fxPreviousFocus=document.activeElement;
   editFx=(i===undefined)?null:i;const f=editFx===null?null:cur().fixed[i];
   $('xTitle').textContent=f?'고정지출 수정':'고정지출 추가';
   $('xDel').style.display=f?'block':'none';
@@ -543,8 +546,13 @@ function openFx(i){
   $('xAmt').value=f?f.amt.toLocaleString('ko-KR'):'';
   $('xDay').value=f?f.day:'';
   $('xNote').value=f&&f.note?f.note:'';
-  $('fxSheet').classList.add('show')}
-function closeFx(){$('fxSheet').classList.remove('show')}
+  $('fxSheet').classList.add('show');fxDraftBaseline=fxDraft();trackAppSheetHistory()}
+function closeFx(force=false,fromHistory=false){
+  if(!$('fxSheet').classList.contains('show'))return true;
+  if(!force&&fxDraft()!==fxDraftBaseline&&!confirm('아직 저장하지 않은 입력을 닫을까요?'))return false;
+  $('fxSheet').classList.remove('show');
+  (fxPreviousFocus&&fxPreviousFocus.isConnected?fxPreviousFocus:$('addRecord')).focus({preventScroll:true});
+  if(!fromHistory)leaveAppSheetHistory();return true}
 function saveFx(){
   const name=$('xName').value.trim(),amt=num($('xAmt').value),day=num($('xDay').value),note=$('xNote').value.trim();
   if(!name||!amt||day<1||day>31)return alert('항목, 금액, 출금일(1~31)을 입력해 주세요');
@@ -552,12 +560,15 @@ function saveFx(){
   if(editFx===null){const f={name,amt,day};if(note)f.note=note;m.fixed.push(f)}
   else{const f=m.fixed[editFx];if(f.day!==day)delete f.done;
     f.name=name;f.amt=amt;f.day=day;if(note)f.note=note;else delete f.note}
-  save();closeFx();render()}
+  save();closeFx(true);render()}
 function delFixed(){if(editFx===null||!confirm('이 고정지출을 삭제할까요?'))return;
-  cur().fixed.splice(editFx,1);save();closeFx();render()}
+  cur().fixed.splice(editFx,1);save();closeFx(true);render()}
 
 // ---- 지출/수입 추가·수정 ----
+let txDraftBaseline='',txPreviousFocus=null;
+function txDraft(){return JSON.stringify([fType,fCat,fPay,backMode,splitN,dutchOn,['fAmt','fBack','fMemo','fDate'].map(id=>$(id).value),selectedFoodStores()])}
 function openSheet(id){
+  txPreviousFocus=document.activeElement;
   editId=id||null;fromPlan=null;const f=editId?findTx(editId):null;
   if(editId&&!f)return;
   $('sTitle').textContent=f?(f.a==='plan'?'예정 지출 수정':'기록 수정'):'기록 추가';
@@ -565,13 +576,19 @@ function openSheet(id){
   if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fBack').value=t.back?t.back.toLocaleString('ko-KR'):'';$('fMemo').value=bare(t.memo||'');$('fDate').value=t.date;fillFoodStores(t.foodStores||[])}
   else{setType('out');setPay(lastPay);$('fAmt').value='';$('fBack').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur;fillFoodStores()}
   hideSug();calcEl='fAmt';setSplit(0);setBackMode('back');showDutch(!!$('fBack').value);calcShow();$('sheet').classList.add('show');
-  if(!f)setTimeout(()=>$('fAmt').focus(),100)}
-function closeSheet(){$('sheet').classList.remove('show')}
+  txDraftBaseline=txDraft();trackAppSheetHistory();
+  if(!f)setTimeout(()=>{if($('sheet').classList.contains('show'))$('fAmt').focus()},100)}
+function closeSheet(force=false,fromHistory=false){
+  if(!$('sheet').classList.contains('show'))return true;
+  if(!force&&txDraft()!==txDraftBaseline&&!confirm('아직 저장하지 않은 입력을 닫을까요?'))return false;
+  hideSug();$('sheet').classList.remove('show');
+  (txPreviousFocus&&txPreviousFocus.isConnected?txPreviousFocus:$('addRecord')).focus({preventScroll:true});
+  if(!fromHistory)leaveAppSheetHistory();return true}
 // 예정 지출 확정: 예정 내용으로 채운 지출 기록 창을 열고, 저장하면 예정에서 빠짐 (취소하면 예정 그대로)
 let fromPlan=null;
 function confirmPlan(id){const g=findTx(id);if(!g)return;const t=g.t;
   openSheet();setType('out',t.cat);$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fMemo').value=t.memo||'';$('fDate').value=t.date;
-  fromPlan=id;$('sTitle').textContent='예정 지출 확정';calcShow()}
+  fromPlan=id;$('sTitle').textContent='예정 지출 확정';calcShow();txDraftBaseline=txDraft();trackAppSheetHistory()}
 // 지운 분야로 된 예전 기록을 고칠 때는 그 분야도 목록 끝에 잠깐 보여줌
 let fCats=[];
 function setType(t,cat){fType=t;const cats=catsOf(t==='plan'?'out':t);fCats=cat&&!cats.includes(cat)?[...cats,cat]:cats;fCat=fCats.includes(cat)?cat:fCats[0];
@@ -595,7 +612,7 @@ function saveTx(){const amt=calcAmt();if(amt<=0)return alert('금액을 입력�
   if(fType==='out'){if(fPay==='credit')rec.pay='credit';if(back)rec.back=back;lastPay=fPay;try{localStorage.setItem(PKEY,fPay)}catch(e){}}
   if(editId){const f=findTx(editId);if(f)S.p[f.k][f.a].splice(f.i,1)}
   if(fromPlan){const g=findTx(fromPlan);if(g&&g.a==='plan')S.p[g.k].plan.splice(g.i,1)}
-  const p=ensure(k);if(fType==='plan')(p.plan||(p.plan=[])).push(rec);else p.tx.push(rec);S.cur=k;save();closeSheet();render()}
+  const p=ensure(k);if(fType==='plan')(p.plan||(p.plan=[])).push(rec);else p.tx.push(rec);S.cur=k;save();closeSheet(true);render()}
 // 금액 칸 계산기: 금액 칸에 식(45,000 ÷ 3)을 그대로 쓰고, 저장하면 결과 금액으로 저장
 // 예전에 메모 끝에 남기던 계산식 [45,000÷3]은 자동완성에서 빼고 보여주고, 수정 창을 열면 지워짐
 const bare=m=>m.replace(/\s*\[[\d,]+[+−×÷][\d,+−×÷]*\]$/,'');
@@ -662,7 +679,7 @@ function sugKey(e){if(!sugs.length||e.isComposing)return;
   else if(e.key==='Enter'&&sugOn>=0){e.preventDefault();useSug(sugOn)}
   else if(e.key==='Escape'){e.preventDefault();hideSug()}}
 function delTx(){if(!editId||!confirm('이 기록을 삭제할까요?'+(foodsForTask(editId).length?'\n이미 등록한 냉장고 식재료는 그대로 남아요.':'')))return;
-  const f=findTx(editId);if(f)S.p[f.k][f.a].splice(f.i,1);save();closeSheet();render()}
+  const f=findTx(editId);if(f)S.p[f.k][f.a].splice(f.i,1);save();closeSheet(true);render()}
 
 // ---- 백업 ----
 function exportData(){const b=new Blob([JSON.stringify(S)],{type:'application/json'});

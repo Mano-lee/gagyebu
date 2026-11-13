@@ -232,8 +232,8 @@ function openFoodSheet(id=null,taskId=null){
   updateFoodTaskProgress();
   $('foodSheet').classList.add('show');
   foodDraftBaseline=foodDraft();
-  trackFoodSheetHistory(foodEditId,foodTaskId);
-  setTimeout(()=>$('fdName').focus(),50);
+  trackAppSheetHistory();
+  setTimeout(()=>{if($('foodSheet').classList.contains('show'))$('fdName').focus()},50);
 }
 function foodDraft(){return JSON.stringify([['fdName','fdStore','fdQty','fdUnit','fdBought','fdExpiry','fdStatus'].map(id=>$(id).value),foodExpiryAnchor,foodExpirySteps])}
 function closeFoodSheet(force=false,fromHistory=false){
@@ -242,7 +242,7 @@ function closeFoodSheet(force=false,fromHistory=false){
   $('foodSheet').classList.remove('show');
   foodEditId=foodTaskId=null;
   (foodPreviousFocus&&foodPreviousFocus.isConnected?foodPreviousFocus:$('f-active')).focus({preventScroll:true});
-  if(!fromHistory)leaveFoodSheetHistory();
+  if(!fromHistory)leaveAppSheetHistory();
   return true;
 }
 function syncFoodStatusInput(){
