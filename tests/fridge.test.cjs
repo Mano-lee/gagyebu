@@ -21,8 +21,15 @@ function app(initial){
   };
   const checks=['chilled','frozen','pantry'].map(value=>({value,checked:false}));
   if(initial)memory.set('my-gagyebu-v2',JSON.stringify(initial));
-  const location={hash:''},history={pushState(_state,_title,hash){location.hash=hash},replaceState(_state,_title,hash){location.hash=hash}};
-  const context=vm.createContext({console,Date,crypto:webcrypto,Blob,URL,setTimeout(){},clearTimeout(){},alert:m=>alerts.push(m),confirm:()=>true,navigator:{},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},document:{body:element('body'),getElementById:element,addEventListener(){},querySelectorAll:selector=>selector==='#fFoodW input'?checks:selector==='#fFoodW input:checked'?checks.filter(c=>c.checked):[]},window:{location,history,matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(){}}});
+  const listeners=new Map(),location={hash:'',get href(){return this.hash}},entries=[{hash:'',state:null}];let position=0;
+  const history={
+    get state(){return entries[position].state},get length(){return entries.length},
+    pushState(state,_title,hash){entries.splice(position+1);entries.push({hash,state});position++;location.hash=hash},
+    replaceState(state,_title,hash){entries[position]={hash,state};location.hash=hash},
+    go(delta){const next=position+delta;if(next<0||next>=entries.length)return;position=next;location.hash=entries[position].hash;for(const listener of listeners.get('popstate')||[])listener({state:this.state})},
+    back(){this.go(-1)},forward(){this.go(1)}
+  };
+  const context=vm.createContext({console,Date,crypto:webcrypto,Blob,URL,setTimeout(){},clearTimeout(){},alert:m=>alerts.push(m),confirm:()=>true,navigator:{},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},document:{body:element('body'),getElementById:element,addEventListener(){},querySelectorAll:selector=>selector==='#fFoodW input'?checks:selector==='#fFoodW input:checked'?checks.filter(c=>c.checked):[]},window:{location,history,matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(type,listener){if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(listener)}}});
   vm.runInContext(fridge,context,{filename:'fridge.js'});
   vm.runInContext(platform,context,{filename:'platform.js'});
   vm.runInContext(core,context,{filename:'index-inline.js'});
@@ -75,6 +82,40 @@ test('ledger alerts include due unconfirmed expenses and disappear once handled'
 test('cancelling navigation preserves unsaved product inputs and the current app',()=>{
   const a=app();a.run('openApp("fridge");openFoodSheet()');a.el('fdName').value='아직 입력 중';a.context.confirm=()=>false;
   const hash=a.run('window.location.hash');a.run('openPlatform()');assert.equal(a.run('activeApp'),'fridge');assert.equal(a.run('window.location.hash'),hash);assert.equal(a.el('fdName').value,'아직 입력 중');assert.equal(a.el('foodSheet').classList.contains('show'),true);
+});
+
+test('phone back closes the ingredient editor and preserves the fridge list before leaving the app',()=>{
+  const a=app();a.run('openApp("fridge")');const id=addStock(a,3);
+  a.run(`foodStore="chilled";foodQuery="milk";editFood('${id}')`);
+  assert.equal(a.run('window.history.state.foodSheet.id'),id);
+  a.run('window.history.back()');
+  assert.equal(a.el('foodSheet').classList.contains('show'),false);
+  assert.equal(a.run('activeApp'),'fridge');assert.equal(a.run('foodStore'),'chilled');assert.equal(a.run('foodQuery'),'milk');
+  a.run('window.history.forward()');assert.equal(a.run('foodEditId'),id);assert.equal(a.el('foodSheet').classList.contains('show'),true);
+  a.run('window.history.back();window.history.back()');assert.equal(a.run('activeApp'),'platform');
+});
+
+test('cancelling phone back keeps unsaved inputs and a subsequent back can discard them',()=>{
+  const a=app();a.run('openApp("fridge")');const id=addStock(a,3),before=a.json(`S.foods['${id}']`);
+  a.run(`editFood('${id}')`);a.el('fdName').value='unsaved';a.context.confirm=()=>false;
+  a.run('window.history.back()');assert.equal(a.el('foodSheet').classList.contains('show'),true);assert.equal(a.el('fdName').value,'unsaved');assert.equal(a.run('window.history.state.foodSheet.id'),id);
+  a.context.confirm=()=>true;a.run('window.history.back()');assert.equal(a.el('foodSheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'fridge');assert.deepEqual(a.json(`S.foods['${id}']`),before);
+});
+
+test('close and save consume the editor history step and permit normal app navigation',()=>{
+  for(const action of ['closeFoodSheet()','saveFood()','openSharedSettings()']){
+    const a=app();a.run('openApp("fridge")');const id=addStock(a,3);
+    a.run(`editFood('${id}');${action}`);assert.equal(a.el('foodSheet').classList.contains('show'),false);
+    assert.equal(a.run('foodHistoryBackPending'),false);assert.equal(a.run('window.history.state?.foodSheet'),undefined);
+    if(action==='openSharedSettings()'){assert.equal(a.run('activeApp'),'settings');a.run('window.history.back()');assert.equal(a.run('activeApp'),'fridge')}
+    a.run('window.history.back()');assert.equal(a.run('activeApp'),'platform');
+  }
+});
+
+test('forward cannot reopen an ingredient that was deleted from its editor',()=>{
+  const a=app();a.run('openApp("fridge")');const id=addStock(a,3);
+  a.run(`editFood('${id}');deleteFood();window.history.forward()`);
+  assert.equal(a.el('foodSheet').classList.contains('show'),false);assert.equal(a.run('activeApp'),'fridge');assert.equal(a.run('window.history.state?.foodSheet'),undefined);
 });
 test('food check creates one pending purchase and no inventory or extra expense',()=>{
   const a=app();addPurchase(a);assert.equal(a.run('pendingFoodTasks().length'),1);assert.equal(a.run('foodItems().length'),0);assert.equal(a.run('cur().tx.length'),1);assert.equal(a.run('calc(S.cur).spent'),42000);assert.equal(a.el('foodNavCount').textContent,1);

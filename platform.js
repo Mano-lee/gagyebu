@@ -4,13 +4,21 @@ const PLATFORM_APPS=[
   {id:'fridge',name:'냉장고',icon:'<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M5 10h14M8 6v1M8 14v3"/>',alerts:fridgePlatformAlerts}
 ];
 let activeApp='platform',fridgeSection='active',currentAppRoute={id:'platform',section:''};
+// history.back()은 비동기다. 닫기 직후 새 창이나 앱을 열면 popstate 이후에 그 이동을 이어간다.
+let foodHistoryBackPending=false,foodHistoryNextDialog=null,foodHistoryNextRoute=null;
 
 function appIcon(app){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${app.icon}</svg>`}
 function openPlatform(){navigateApp('platform')}
 function openApp(id,section=''){navigateApp(id,section)}
 function openSharedSettings(){navigateApp('settings')}
 function navigateApp(id,section=''){
-  const route=normalizeAppRoute(id,section),hash='#'+route.id+(route.section?'/'+route.section:'');
+  const route=normalizeAppRoute(id,section);
+  if($('foodSheet').classList.contains('show')&&!closeFoodSheet())return;
+  if(foodHistoryBackPending){foodHistoryNextRoute=route;return}
+  commitAppRoute(route);
+}
+function commitAppRoute(route){
+  const hash='#'+route.id+(route.section?'/'+route.section:'');
   if(!applyAppRoute(route))return;
   if(window.location.hash!==hash)window.history.pushState(null,'',hash);
 }
@@ -19,13 +27,50 @@ function normalizeAppRoute(id,section=''){
   if(id==='fridge')return {id,section:['active','pending','history','soon'].includes(section)?section:'active'};
   return {id:id==='settings'?'settings':'platform',section:''};
 }
-function restoreAppRoute(){
+function trackFoodSheetHistory(id,taskId){
+  foodHistoryNextRoute=null;
+  const dialog={id,taskId};
+  if(foodHistoryBackPending){foodHistoryNextDialog=dialog;return}
+  const method=window.history.state?.foodSheet?'replaceState':'pushState';
+  window.history[method]({...window.history.state,foodSheet:dialog},'',window.location.href);
+}
+function leaveFoodSheetHistory(){
+  foodHistoryNextDialog=null;
+  if(window.history.state?.foodSheet&&!foodHistoryBackPending){foodHistoryBackPending=true;window.history.back()}
+}
+function restoreFoodSheetHistory(dialog){
+  if((dialog.id&&!(S.foods||{})[dialog.id])||(dialog.taskId&&!sourceTx(dialog.taskId))){leaveFoodSheetHistory();return}
+  openFoodSheet(dialog.id||null,dialog.taskId||null);
+}
+function handleFoodSheetPop(event){
+  if(foodHistoryBackPending){
+    const dialog=foodHistoryNextDialog,route=foodHistoryNextRoute;
+    foodHistoryBackPending=false;foodHistoryNextDialog=foodHistoryNextRoute=null;
+    if(dialog&&$('foodSheet').classList.contains('show'))trackFoodSheetHistory(dialog.id,dialog.taskId);
+    else if(route)commitAppRoute(route);
+    return true;
+  }
+  if($('foodSheet').classList.contains('show')){
+    const id=foodEditId,taskId=foodTaskId;
+    // 취소하면 현재 입력 그대로 수정창의 이동 단계를 다시 등록한다.
+    if(!closeFoodSheet(false,true))trackFoodSheetHistory(id,taskId);
+    return true;
+  }
+  if(event.state?.foodSheet){
+    const [id,section]=(window.location.hash||'').replace(/^#/,'').split('/'),route=normalizeAppRoute(id,section);
+    if(route.id===currentAppRoute.id&&route.section===currentAppRoute.section){restoreFoodSheetHistory(event.state.foodSheet);return true}
+  }
+  return false;
+}
+function restoreAppRoute(event){
+  if(event&&handleFoodSheetPop(event))return;
   const [id,section]=(window.location.hash||'').replace(/^#/,'').split('/');
-  if(!applyAppRoute(normalizeAppRoute(id,section)))window.history.replaceState(null,'','#'+currentAppRoute.id+(currentAppRoute.section?'/'+currentAppRoute.section:''));
+  if(!applyAppRoute(normalizeAppRoute(id,section))){window.history.replaceState(null,'','#'+currentAppRoute.id+(currentAppRoute.section?'/'+currentAppRoute.section:''));return}
+  if(window.history.state?.foodSheet)restoreFoodSheetHistory(window.history.state.foodSheet);
 }
 function applyAppRoute(route){
   // 이동하기 전에 저장하지 않은 제품 입력을 확인한다.
-  if($('foodSheet').classList.contains('show')){closeFoodSheet();if($('foodSheet').classList.contains('show'))return false}
+  if($('foodSheet').classList.contains('show')&&!closeFoodSheet(false,true))return false;
   closeSheet();closeFx();
   currentAppRoute=route;
   activeApp=route.id;

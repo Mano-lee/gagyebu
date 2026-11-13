@@ -232,14 +232,18 @@ function openFoodSheet(id=null,taskId=null){
   updateFoodTaskProgress();
   $('foodSheet').classList.add('show');
   foodDraftBaseline=foodDraft();
+  trackFoodSheetHistory(foodEditId,foodTaskId);
   setTimeout(()=>$('fdName').focus(),50);
 }
 function foodDraft(){return JSON.stringify([['fdName','fdStore','fdQty','fdUnit','fdBought','fdExpiry','fdStatus'].map(id=>$(id).value),foodExpiryAnchor,foodExpirySteps])}
-function closeFoodSheet(force=false){
-  if(!force&&foodDraft()!==foodDraftBaseline&&!confirm('아직 저장하지 않은 입력을 닫을까요?\n이미 저장한 식재료는 그대로 남아요.'))return;
+function closeFoodSheet(force=false,fromHistory=false){
+  if(!$('foodSheet').classList.contains('show'))return true;
+  if(!force&&foodDraft()!==foodDraftBaseline&&!confirm('아직 저장하지 않은 입력을 닫을까요?\n이미 저장한 식재료는 그대로 남아요.'))return false;
   $('foodSheet').classList.remove('show');
   foodEditId=foodTaskId=null;
-  (foodPreviousFocus&&foodPreviousFocus.isConnected?foodPreviousFocus:$('f-active')).focus();
+  (foodPreviousFocus&&foodPreviousFocus.isConnected?foodPreviousFocus:$('f-active')).focus({preventScroll:true});
+  if(!fromHistory)leaveFoodSheetHistory();
+  return true;
 }
 function syncFoodStatusInput(){
   const old=(S.foods||{})[foodEditId];
