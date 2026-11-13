@@ -270,12 +270,13 @@ nav button.on{color:var(--accent);font-weight:700}
       <input id="fdName" placeholder="예: 우유, 계란, 대파" maxlength="80" required autocomplete="off">
       <label for="fdStore">보관 장소</label>
       <select id="fdStore"><option value="chilled">냉장</option><option value="frozen">냉동</option><option value="pantry">실온</option></select>
-      <div class="row2"><div><label for="fdQty">수량</label><input id="fdQty" type="number" inputmode="decimal" min="0.001" step="any" value="1" required></div><div><label for="fdUnit">단위</label><input id="fdUnit" placeholder="개, 팩, 봉, g" value="개" maxlength="12"></div></div>
+      <div class="row2"><div><label for="fdQty">남은 수량</label><input id="fdQty" type="number" inputmode="decimal" min="0" step="any" value="1" required></div><div><label for="fdUnit">단위</label><input id="fdUnit" placeholder="개, 통, 팩, 봉, g" value="개" maxlength="12"></div></div>
+      <small class="food-help">낱개나 소분한 단위로 등록해요. 예: 계란 10개, 소분 고기 5팩. 개·통·팩 등은 목록에서 하나씩 사용할 수 있어요.</small>
       <div class="row2"><div><label for="fdBought">구매일</label><input id="fdBought" type="date"></div><div><label for="fdExpiry">표시된 기한 (선택)</label><input id="fdExpiry" type="date"></div></div>
       <small class="food-help">포장에 적힌 소비기한·유통기한을 입력하세요. 모르면 비워 두어도 돼요.</small>
       <label class="food-open"><input id="fdOpened" type="checkbox" onchange="toggleFoodOpened()">이미 개봉했어요</label>
       <div id="fdOpenedDate" hidden><label for="fdOpenedAt">개봉일</label><input id="fdOpenedAt" type="date"></div>
-      <div id="fdStatusRow" class="food-status-row" hidden><label for="fdStatus">사용 상태</label><select id="fdStatus"><option value="active">보관 중</option><option value="consumed">다 먹음</option><option value="discarded">폐기</option></select></div>
+      <div id="fdStatusRow" class="food-status-row" hidden><label for="fdStatus">사용 상태</label><select id="fdStatus" onchange="syncFoodStatusInput()"><option value="active">보관 중</option><option value="consumed">다 먹음</option><option value="discarded">폐기</option></select></div>
       <button id="fdSave" class="btn" type="submit">식재료 저장</button>
       <button id="fdFinish" class="btn ghost" type="button" onclick="finishFoodTask()" hidden>등록 완료</button>
       <button id="fdDelete" class="btn danger" type="button" onclick="deleteFood()" hidden>식재료 기록 삭제</button>
@@ -662,9 +663,9 @@ function exportData(){const b=new Blob([JSON.stringify(S)],{type:'application/js
   setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();
   r.onload=()=>{try{const d=prepareFoodData(JSON.parse(r.result));
-    if(confirm('지금 가계부와 냉장고 기록을 백업 내용으로 바꿀까요?\n예전 가계부 전용 백업에는 냉장고 기록이 없어요.')){S=d;START_DAY=dayOf(S);S.cur=periodOf(today());save();render()}}
+    if(confirm('지금 가계부와 냉장고 기록을 백업 내용으로 바꿀까요?\n예전 가계부 전용 백업에는 냉장고 기록이 없어요.')){S=d;lastFoodUse=null;START_DAY=dayOf(S);S.cur=periodOf(today());save();render()}}
     catch(e){alert('올바른 백업 파일이 아니에요')}};r.readAsText(f);inp.value=''}
-function resetAll(){if(confirm('정말 가계부와 냉장고의 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S=prepareFoodData({cur:periodOf(today()),day:START_DAY,p:{}});save();openPlatform()}}
+function resetAll(){if(confirm('정말 가계부와 냉장고의 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S=prepareFoodData({cur:periodOf(today()),day:START_DAY,p:{}});lastFoodUse=null;save();openPlatform()}}
 
 // ---- 구글 시트 동기화 ----
 const SKEY='my-gagyebu-sync';

@@ -38,6 +38,9 @@ function addFood(a,name='우유'){
   a.el('fdName').value=name;a.el('fdQty').value='1';a.run('saveFood()');
   return a.run('foodItems().at(-1).id');
 }
+function addStock(a,quantity,unit='개'){
+  a.run('openFoodSheet()');a.el('fdName').value='소분 식재료';a.el('fdQty').value=String(quantity);a.el('fdUnit').value=unit;a.run('saveFood()');return a.run('foodItems().at(-1).id');
+}
 test('old ledger data loads without changing transactions and acquires a separate inventory',()=>{
   const old={p:{'2026-10-01':{start:100000,fixed:[],tx:[{id:1,type:'out',amt:3000,cat:'식비',date:'2026-10-03',memo:'점심'}]}}};
   const a=app(old);assert.deepEqual(a.json('S.p["2026-10-01"].tx'),old.p['2026-10-01'].tx);assert.deepEqual(a.json('S.foods'),{});
@@ -149,6 +152,46 @@ test('selecting a pictured storage resets search/history and shows its active in
 test('backup validation rejects unsafe inventory IDs and malformed inventory',()=>{
   const a=app();assert.throws(()=>a.run('prepareFoodData({p:{},foods:[]})'));
   assert.throws(()=>a.run(`prepareFoodData({p:{},foods:{"bad'":{id:"bad'",name:'x',store:'chilled',status:'active',quantity:1}}})`));
+});
+test('one-tap use reduces only the selected batch and keeps initial and remaining amounts across reloads',()=>{
+  const a=app(),id=addStock(a,10);addStock(a,3,'통');a.run(`useFood('${id}');useFood('${id}')`);
+  assert.equal(a.run(`S.foods['${id}'].quantity`),8);assert.equal(a.run(`S.foods['${id}'].initialQuantity`),10);assert.equal(a.run('foodItems()[1].quantity'),3);
+  const b=app(JSON.parse(a.memory.get('my-gagyebu-v2')));assert.equal(b.run(`S.foods['${id}'].quantity`),8);assert.equal(b.run(`S.foods['${id}'].initialQuantity`),10);
+});
+test('last unit becomes consumed at zero and further taps cannot create negative stock',()=>{
+  const a=app();addPurchase(a);const id=addStock(a,1,'팩');a.run(`useFood('${id}')`);
+  assert.equal(a.run(`foodRemaining(S.foods['${id}'])`),0);assert.equal(a.run(`S.foods['${id}'].status`),'consumed');assert.equal(a.run('foodStorageSummary("chilled").count'),0);assert.equal(a.run(`useFood('${id}')`),false);
+  const saved=JSON.parse(a.memory.get('my-gagyebu-v2')),b=app(saved);assert.ok(saved.foods[id].quantity>0);assert.equal(b.run('foodItems().length'),1);assert.equal(b.run(`foodRemaining(S.foods['${id}'])`),0);assert.equal(b.run('Object.values(S.p).flatMap(p=>p.tx).length'),1);
+});
+test('countable containers use one unit while weight and volume amounts require explicit edits',()=>{
+  const a=app();for(const unit of ['개','통','팩','봉','병']){const id=addStock(a,3,unit);assert.equal(a.run(`useFood('${id}')`),true);assert.equal(a.run(`S.foods['${id}'].quantity`),2)}
+  for(const unit of ['g','kg','ml','L']){const id=addStock(a,500,unit);assert.equal(a.run(`useFood('${id}')`),false);assert.equal(a.run(`S.foods['${id}'].quantity`),500)}
+});
+test('a last partial portion consumes its actual remainder without going negative',()=>{
+  const a=app(),id=addStock(a,1.5,'팩');a.run(`useFood('${id}')`);assert.equal(a.run(`S.foods['${id}'].quantity`),0.5);a.run(`useFood('${id}')`);assert.equal(a.run(`foodRemaining(S.foods['${id}'])`),0);assert.equal(a.run('lastFoodUse.used'),0.5);
+});
+test('undo restores the last decrement or last-unit completion without changing unrelated fields',()=>{
+  const a=app(),id=addStock(a,2);a.run(`useFood('${id}');S.foods['${id}'].name='수정한 이름';undoFoodUse()`);assert.equal(a.run(`S.foods['${id}'].quantity`),2);assert.equal(a.run(`S.foods['${id}'].name`),'수정한 이름');
+  a.run(`useFood('${id}');useFood('${id}');undoFoodUse()`);assert.equal(a.run(`S.foods['${id}'].quantity`),1);assert.equal(a.run(`S.foods['${id}'].status`),'active');assert.equal(a.run(`S.foods['${id}'].finishedAt`),undefined);assert.equal(a.run('undoFoodUse()'),false);
+});
+test('undo refuses to overwrite a newer quantity change',()=>{
+  const a=app(),id=addStock(a,10);a.run(`useFood('${id}');S.foods['${id}'].quantity=4`);assert.equal(a.run('undoFoodUse()'),false);assert.equal(a.run(`S.foods['${id}'].quantity`),4);assert.ok(a.alerts.length);
+});
+test('consumption restoration uses the last remaining amount, not the original purchase amount',()=>{
+  const a=app(),id=addStock(a,10);a.run(`useFood('${id}');useFood('${id}');changeFoodState('${id}','consumed')`);assert.equal(a.run(`foodRemaining(S.foods['${id}'])`),0);a.run(`changeFoodState('${id}','active')`);assert.equal(a.run(`S.foods['${id}'].quantity`),8);
+  a.run(`changeFoodState('${id}','discarded');changeFoodState('${id}','active')`);assert.equal(a.run(`S.foods['${id}'].quantity`),8);
+});
+test('legacy consumed batches are normalized without losing their restoration quantity or modifying the input',()=>{
+  const a=app(),id=addStock(a,5),data=a.json('S');data.foods[id].status='consumed';a.context.legacy=data;const normalized=a.json('prepareFoodData(legacy)');assert.equal(a.run(`foodRemaining(prepareFoodData(legacy).foods['${id}'])`),0);assert.equal(normalized.foods[id].restoreQuantity,5);assert.equal(data.foods[id].quantity,5);
+  const b=app(data);b.run(`changeFoodState('${id}','active')`);assert.equal(b.run(`S.foods['${id}'].quantity`),5);
+});
+test('editing exhausted stock preserves zero and offers a positive quantity when restoring from the editor',()=>{
+  const a=app(),id=addStock(a,1,'통');a.run(`useFood('${id}');editFood('${id}')`);assert.equal(a.el('fdQty').value,0);a.el('fdName').value='이름 변경';a.run('saveFood()');assert.equal(a.run(`foodRemaining(S.foods['${id}'])`),0);
+  a.run(`editFood('${id}')`);a.el('fdStatus').value='active';a.run('syncFoodStatusInput();saveFood()');assert.equal(a.run(`S.foods['${id}'].quantity`),1);assert.equal(a.run(`S.foods['${id}'].status`),'active');
+});
+test('sync combines zero-stock completion with a remote metadata edit and can reload the result',()=>{
+  const a=app(),id=addStock(a,1),base=a.json('S');a.run(`useFood('${id}')`);const local=a.json('S'),remote=clone(base);remote.foods[id].name='다른 기기 이름';a.context.base=base;a.context.left=local;a.context.right=remote;
+  const merged=a.json('merge3(JSON.stringify(base),left,right)'),b=app(merged);assert.equal(b.run(`S.foods['${id}'].status`),'consumed');assert.equal(b.run(`foodRemaining(S.foods['${id}'])`),0);assert.equal(b.run(`S.foods['${id}'].name`),'다른 기기 이름');
 });
 test('three-way sync combines distinct products and distinct edits to one product',()=>{
   const a=app();a.run('openFoodSheet()');const id=addFood(a),base=a.json('S'),l=clone(base),r=clone(base);

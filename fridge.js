@@ -4,15 +4,27 @@ const FOOD_STATES={active:'보관 중',consumed:'다 먹음',discarded:'폐기'}
 let foodStore='all',foodView='active',foodQuery='';
 let foodEditId=null,foodTaskId=null,foodDraftBaseline='';
 let foodPreviousFocus=null;
+let lastFoodUse=null;
+const FOOD_COUNT_UNITS=new Set(['개','통','팩','봉','봉지','병','캔','컵','장','쪽','모','알','덩이','덩어리','조각','인분','회분','세트','포','줄','롤','묶음','판','마리','상자']);
+const foodAmount=n=>Number(n).toLocaleString('ko-KR',{maximumSignificantDigits:12});
+const foodCountable=f=>FOOD_COUNT_UNITS.has(String(f.unit||'개').trim());
+// 다 먹은 기록은 상태로 잔량 0을 표현한다. quantity는 복원할 마지막 수량을
+// 양수로 보존해, 기존 앱 버전의 백업 검증에서도 정상적으로 읽을 수 있게 한다.
+const foodRemaining=f=>f.status==='consumed'?0:f.quantity;
 
 function prepareFoodData(data){
   if(!data||typeof data!=='object'||!data.p||Array.isArray(data.p)||typeof data.p!=='object')throw new Error('invalid-data');
   for(const p of Object.values(data.p))if(!p||!Array.isArray(p.tx)||!Array.isArray(p.fixed))throw new Error('invalid-data');
   if(data.foods!==undefined&&(!data.foods||Array.isArray(data.foods)||typeof data.foods!=='object'))throw new Error('invalid-foods');
+  const foods={};
   for(const [id,f] of Object.entries(data.foods||{})){
     if(!f||f.id!==id||!/^[a-zA-Z0-9_-]+$/.test(id)||['__proto__','constructor','prototype'].includes(id)||typeof f.name!=='string'||!Object.hasOwn(FOOD_STORES,f.store)||!Object.hasOwn(FOOD_STATES,f.status)||!Number.isFinite(f.quantity)||f.quantity<=0)throw new Error('invalid-food');
+    const item={...f,initialQuantity:Math.max(f.quantity,Number.isFinite(f.initialQuantity)?f.initialQuantity:0)};
+    // 예전 '다 먹음' 기록의 수량은 복원용으로 보존하고 남은 수량은 0으로 읽는다.
+    if(item.status==='consumed'&&item.quantity>0)item.restoreQuantity=item.quantity;
+    foods[id]=item;
   }
-  return {...data,schemaVersion:Math.max(3,Number(data.schemaVersion)||0),foods:data.foods||{}};
+  return {...data,schemaVersion:Math.max(3,Number(data.schemaVersion)||0),foods};
 }
 function foodItems(){return Object.values(S.foods||{})}
 function foodPurchases(){return Object.values(S.p).flatMap(p=>p.tx).filter(t=>t.type==='out'&&Array.isArray(t.foodStores)&&t.foodStores.some(s=>Object.hasOwn(FOOD_STORES,s))).sort(byDate)}
@@ -82,10 +94,46 @@ function foodStorageOverview(items){
 function setFoodView(view){openApp('fridge',view)}
 function setFoodStore(store){foodStore=store;render()}
 function filterFoods(value){foodQuery=value;const input=$('foodSearch'),pos=input.selectionStart;render();$('foodSearch').focus();$('foodSearch').setSelectionRange(pos,pos)}
+function foodStockSnapshot(f){return Object.fromEntries(['quantity','initialQuantity','unit','status','finishedAt','restoreQuantity'].map(key=>[key,f[key]]))}
+function applyFoodStatus(f,status){
+  f.initialQuantity=Math.max(f.quantity,f.initialQuantity||0);
+  if(status==='consumed'&&f.quantity>0)f.restoreQuantity=f.quantity;
+  if(status==='active')delete f.finishedAt;else if(f.status!==status||!f.finishedAt)f.finishedAt=today();
+  f.status=status;
+}
+function useFood(id){
+  const f=(S.foods||{})[id];
+  if(!f||f.status!=='active'||!foodCountable(f)||f.quantity<=0)return false;
+  const before=foodStockSnapshot(f),used=Math.min(1,f.quantity);
+  f.initialQuantity=Math.max(f.quantity,f.initialQuantity||0);
+  if(f.quantity<=1)applyFoodStatus(f,'consumed');else f.quantity=Number((f.quantity-1).toPrecision(12));
+  lastFoodUse={id,before,after:foodStockSnapshot(f),used,name:f.name,unit:f.unit||'개'};
+  save();render();
+  ($(f.status==='active'?'use-'+id:'undoFoodUse'))?.focus?.({preventScroll:true});
+  return true;
+}
+function undoFoodUse(){
+  if(!lastFoodUse)return false;
+  const action=lastFoodUse,f=(S.foods||{})[action.id];
+  if(!f||JSON.stringify(foodStockSnapshot(f))!==JSON.stringify(action.after)){
+    lastFoodUse=null;alert('수량이나 상태가 이미 바뀌었어요. 제품 수정에서 남은 수량을 확인해 주세요.');render();return false;
+  }
+  for(const [key,value] of Object.entries(action.before)){if(value===undefined)delete f[key];else f[key]=value}
+  lastFoodUse=null;save();render();$('use-'+f.id)?.focus?.({preventScroll:true});return true;
+}
+function dismissFoodUse(){lastFoodUse=null;render()}
+function foodUseNotice(){
+  if(!lastFoodUse)return '';
+  const current=(S.foods||{})[lastFoodUse.id];
+  if(!current||JSON.stringify(foodStockSnapshot(current))!==JSON.stringify(lastFoodUse.after)){lastFoodUse=null;return ''}
+  const a=lastFoodUse,remaining=foodRemaining(a.after);
+  return `<div class="food-use-toast" role="status"><span>${esc(a.name)} ${foodAmount(a.used)}${esc(a.unit)} 사용 · ${remaining>0?`${foodAmount(remaining)}${esc(a.unit)} 남음`:'다 먹었어요'}</span><button id="undoFoodUse" onclick="undoFoodUse()">되돌리기</button><button class="food-use-dismiss" onclick="dismissFoodUse()" aria-label="수량 변경 알림 닫기">×</button></div>`;
+}
 function foodCard(f){
-  const expiry=foodExpiry(f),t=sourceTx(f.txId),src=t?foodSourceText(t):f.sourceMemo;
-  return `<article class="card"><div class="food-card-top"><button class="food-name" onclick="editFood('${f.id}')">${esc(f.name)}</button><span class="food-store ${f.store}">${FOOD_STORES[f.store]}</span></div>
-  <div class="food-dates">${esc(f.quantity)}${esc(f.unit||'개')} · ${f.openedAt?'개봉 '+esc(f.openedAt):'미개봉'}<br>구매 ${esc(f.purchasedAt||'미입력')}${f.status!=='active'?` · ${FOOD_STATES[f.status]} ${esc(f.finishedAt||'')}`:''}</div>
+  const expiry=foodExpiry(f),t=sourceTx(f.txId),src=t?foodSourceText(t):f.sourceMemo,unit=f.unit||'개',initial=f.initialQuantity??f.quantity,remaining=foodRemaining(f);
+  return `<article class="card" data-food-id="${f.id}"><div class="food-card-top"><button class="food-name" onclick="editFood('${f.id}')">${esc(f.name)}</button><span class="food-store ${f.store}">${FOOD_STORES[f.store]}</span></div>
+  <div class="food-quantity"><div><span class="food-quantity-label">${f.status==='discarded'?'폐기 수량':'남은 수량'}</span><strong>${foodAmount(remaining)}<small>${esc(unit)}</small></strong>${initial>0?`<span class="food-quantity-initial">처음 ${foodAmount(initial)}${esc(unit)}</span>`:''}</div>${f.status==='active'&&foodCountable(f)?`<button id="use-${f.id}" class="food-use" onclick="useFood('${f.id}')" aria-label="${esc(f.name)} ${foodAmount(Math.min(1,remaining))}${esc(unit)} 사용, 현재 ${foodAmount(remaining)}${esc(unit)} 남음"><span aria-hidden="true">−</span>${foodAmount(Math.min(1,remaining))}${esc(unit)} 사용</button>`:f.status==='active'?`<button class="food-quantity-edit" onclick="editFood('${f.id}')">남은 양 수정</button>`:''}</div>
+  <div class="food-dates">${f.openedAt?'개봉 '+esc(f.openedAt):'미개봉'} · 구매 ${esc(f.purchasedAt||'미입력')}${f.status!=='active'?`<br>${FOOD_STATES[f.status]} ${esc(f.finishedAt||'')}`:''}</div>
   <span class="food-expiry ${expiry.cls}">${esc(expiry.text)}</span>
   ${src?`<div style="margin-top:10px">${t?`<button class="food-source" onclick="openSheet(${t.id})">구매 내역 · ${esc(src)} ›</button>`:`<span class="food-help">구매 메모 · ${esc(src)} (원래 지출 없음)</span>`}</div>`:''}
   <div class="food-actions">${f.status==='active'?`${!f.openedAt?`<button class="btn ghost" onclick="changeFoodState('${f.id}','opened')">개봉</button>`:''}<button class="btn ghost" onclick="changeFoodState('${f.id}','consumed')">다 먹음</button><button class="btn ghost" onclick="changeFoodState('${f.id}','discarded')">폐기</button>`:`<button class="btn ghost" onclick="changeFoodState('${f.id}','active')">보관 중으로 복원</button>`}<button class="btn ghost" onclick="editFood('${f.id}')">수정</button></div></article>`;
@@ -95,7 +143,7 @@ function fridgePage(){
   let items=foodView==='history'?all.filter(f=>f.status!=='active'):foodView==='soon'?soon:foodView==='opened'?opened:active;
   items=items.filter(f=>(foodStore==='all'||f.store===foodStore)&&f.name.toLocaleLowerCase().includes(foodQuery.trim().toLocaleLowerCase())).sort((a,b)=>(a.bestBefore||'9999').localeCompare(b.bestBefore||'9999')||a.name.localeCompare(b.name,'ko'));
   const history=foodPurchases().filter(t=>['done','skipped'].includes(t.foodState));
-  return `<div class="food-heading"><div><h1>우리 집 냉장고</h1><p class="muted">장을 본 기록을, 먹을 재료로 정리해요.</p></div><button class="btn" onclick="openFoodSheet()">+ 직접 등록</button></div>
+  return `${foodUseNotice()}<div class="food-heading"><div><h1>우리 집 냉장고</h1><p class="muted">장을 본 기록을, 먹을 재료로 정리해요.</p></div><button class="btn" onclick="openFoodSheet()">+ 직접 등록</button></div>
   ${foodStorageOverview(active)}
   <div class="food-quick-filters" aria-label="식재료 상태 필터"><button class="chip${foodView==='active'&&foodStore==='all'?' on':''}" onclick="setFoodView('active')">전체 ${active.length}</button><button class="chip${foodView==='soon'?' on':''}" onclick="setFoodView('soon')">기한 임박·경과 ${soon.length}</button><button class="chip${foodView==='opened'?' on':''}" onclick="setFoodView('opened')">개봉 ${opened.length}</button></div>
   ${pending.length?`<h2 id="foodTasks" class="food-section-title">식재료 등록 대기 <span class="badge">${pending.length}건</span></h2><div class="food-task-grid">${pending.map(t=>foodTaskCard(t)).join('')}</div>`:fridgeSection==='pending'?'<div id="foodTasks" class="card food-empty"><strong>등록 대기 중인 장보기가 없어요.</strong><p class="muted">가계부에 지출을 기록할 때 냉장·냉동·실온을 체크해 주세요.</p></div>':''}
@@ -124,7 +172,7 @@ function openFoodSheet(id=null,taskId=null){
   $('fdName').value=f?f.name:'';
   $('fdStore').value=f?f.store:t?t.foodStores[0]:'chilled';
   if(!Object.hasOwn(FOOD_STORES,$('fdStore').value))$('fdStore').value='chilled';
-  $('fdQty').value=f?f.quantity:1;
+  $('fdQty').value=f?foodRemaining(f):1;
   $('fdUnit').value=f?f.unit||'개':'개';
   $('fdBought').value=f?f.purchasedAt||'':t?t.date:today();
   $('fdExpiry').value=f?f.bestBefore||'':'';
@@ -151,6 +199,10 @@ function closeFoodSheet(force=false){
   (foodPreviousFocus&&foodPreviousFocus.isConnected?foodPreviousFocus:$('f-active')).focus();
 }
 function toggleFoodOpened(){$('fdOpenedDate').hidden=!$('fdOpened').checked}
+function syncFoodStatusInput(){
+  const old=(S.foods||{})[foodEditId];
+  if($('fdStatus').value!=='consumed'&&Number($('fdQty').value)===0)$('fdQty').value=old&&old.restoreQuantity>0?old.restoreQuantity:1;
+}
 function updateFoodTaskProgress(){
   const list=foodTaskId?foodsForTask(foodTaskId):[];
   $('fdProgress').hidden=!foodTaskId;
@@ -159,18 +211,20 @@ function updateFoodTaskProgress(){
 function saveFood(event,finish=false){
   if(event)event.preventDefault();
   const name=$('fdName').value.trim(),quantity=Number($('fdQty').value),store=$('fdStore').value;
+  const old=foodEditId&&(S.foods||{})[foodEditId],status=old?$('fdStatus').value:'active';
   if(!name){alert('제품 이름을 입력해 주세요.');$('fdName').focus();return false}
-  if(!Number.isFinite(quantity)||quantity<=0){alert('수량은 0보다 큰 숫자로 입력해 주세요.');$('fdQty').focus();return false}
+  if(!Number.isFinite(quantity)||quantity<0||(status!=='consumed'&&quantity===0)){alert('보관할 수량은 0보다 큰 숫자로 입력해 주세요.');$('fdQty').focus();return false}
   const openedAt=$('fdOpened').checked?$('fdOpenedAt').value:null;
   if($('fdOpened').checked&&(!openedAt||openedAt>today())){alert('개봉일을 오늘 또는 이전 날짜로 입력해 주세요.');return false}
   const t=sourceTx(foodTaskId);
   if(foodTaskId&&(!t||!t.foodStores?.length)){alert('연결된 구매 내역이 바뀌었어요. 가계부에서 확인해 주세요.');return false}
-  const old=foodEditId&&(S.foods||{})[foodEditId];
   if(foodEditId&&!old){alert('다른 기기에서 삭제한 식재료예요. 목록을 확인해 주세요.');closeFoodSheet(true);render();return false}
-  const id=foodEditId||crypto.randomUUID(),status=old?$('fdStatus').value:'active';
-  const f={...old,id,name,store,quantity,unit:$('fdUnit').value.trim()||'개',purchasedAt:$('fdBought').value||null,bestBefore:$('fdExpiry').value||null,openedAt,status};
+  const id=foodEditId||crypto.randomUUID(),unit=$('fdUnit').value.trim()||'개';
+  const initialQuantity=old&&unit===(old.unit||'개')?Math.max(old.initialQuantity??old.quantity,quantity):quantity;
+  const storedQuantity=status==='consumed'&&quantity===0?(old&&old.restoreQuantity>0?old.restoreQuantity:old&&old.quantity>0?old.quantity:1):quantity;
+  const f={...old,id,name,store,quantity:storedQuantity,initialQuantity,unit,purchasedAt:$('fdBought').value||null,bestBefore:$('fdExpiry').value||null,openedAt};
   if(t){f.txId=t.id;f.sourceMemo=foodSourceText(t)}
-  if(status!=='active')f.finishedAt=old&&old.status===status&&old.finishedAt||today();else delete f.finishedAt;
+  applyFoodStatus(f,status);
   (S.foods||(S.foods={}))[id]=f;
   if(t){t.foodState=finish?'done':'pending'}
   save();render();
@@ -189,7 +243,7 @@ function finishFoodTask(){
 function changeFoodState(id,state){
   const f=(S.foods||{})[id];if(!f)return;
   if(state==='discarded'&&!confirm(`“${f.name}”을(를) 폐기 처리할까요?\n소비·폐기 기록에서 복원할 수 있어요.`))return;
-  if(state==='opened')f.openedAt=today();else{f.status=state;if(state==='active')delete f.finishedAt;else f.finishedAt=today()}
+  if(state==='opened')f.openedAt=today();else if(Object.hasOwn(FOOD_STATES,state))applyFoodStatus(f,state);else return;
   save();render();
 }
 function deleteFood(){
