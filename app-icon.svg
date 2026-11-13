@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 512 512">
+  <title>내 생활</title>
+  <desc>초록색 바탕에 모인 네 개의 생활 앱 타일</desc>
+  <defs>
+    <linearGradient id="green" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#287e69"/>
+      <stop offset="1" stop-color="#165545"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#green)" d="M0 0h512v512H0z"/>
+  <rect x="138" y="138" width="104" height="104" rx="29" fill="#fff8e9"/>
+  <rect x="270" y="138" width="104" height="104" rx="29" fill="#fff8e9"/>
+  <rect x="138" y="270" width="104" height="104" rx="29" fill="#fff8e9"/>
+  <path fill="#e7bb70" d="M299 270h46a29 29 0 0 1 29 29v46a29 29 0 0 1-29 29h-46a29 29 0 0 1-29-29v-46a29 29 0 0 1 29-29Z"/>
+</svg>

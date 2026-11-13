@@ -3,15 +3,18 @@
 // 아래 SECRET을 나만 아는 비밀번호로 바꾸세요. (가계부 설정 탭에 같은 값을 입력해요)
 const SECRET = '여기에-비밀번호-입력';
 
-function doGet(e) { return handle(e.parameter.key, null); }
-function doPost(e) { const b = JSON.parse(e.postData.contents); return handle(b.key, b); }
+function doGet(e) { return handle(e.parameter.key, null, Number(e.parameter.clientSchema) || 0); }
+function doPost(e) { const b = JSON.parse(e.postData.contents); return handle(b.key, b, Number(b.clientSchema) || 0); }
 
-function handle(key, body) {
+function handle(key, body, clientSchema) {
   if (SECRET === '여기에-비밀번호-입력' || key !== SECRET) return out({ error: 'auth' });
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const cur = readData();
+    // 냉장고를 모르는 구버전 앱이 새 식재료 기록을 덮어쓰지 않도록 차단.
+    // 새 앱을 모든 기기에서 새로고침한 뒤 사용하세요.
+    if (cur.data && cur.data.schemaVersion >= 3 && clientSchema < 3) return out({ error: 'upgrade' });
     if (!body) return out(cur);
     // 다른 기기가 먼저 바꿨으면 덮어쓰지 않고 알려줌
     if (!body.force && cur.ver && body.base !== cur.ver) return out({ conflict: true, ver: cur.ver, data: cur.data });

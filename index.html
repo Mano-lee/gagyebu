@@ -5,10 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1f6f5c">
 <meta name="mobile-web-app-capable" content="yes">
-<title>내 가계부</title>
+<meta name="apple-mobile-web-app-title" content="내 생활">
+<title>내 생활</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/svg+xml" href="app-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="stylesheet" href="fridge.css">
 <style>
 :root{--bg:#f4f1ea;--card:#fff;--ink:#22302b;--sub:#7d8781;--accent:#1f6f5c;--red:#c4553f;--line:#e7e2d7;--warn:#a8650f;--warnbg:#fcf0dc;--warnln:#e3a548}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -170,11 +173,18 @@ nav button.on{color:var(--accent);font-weight:700}
   .panel{width:440px;border-radius:20px;padding:24px;max-height:85vh}
 }
 </style>
+<link rel="stylesheet" href="platform.css">
 </head>
-<body>
-<aside class="side">
-<header>
-  <div class="brand">내 가계부</div>
+<body class="platform-mode">
+<header id="platformHeader" class="platform-top">
+  <button class="platform-wordmark" onclick="openPlatform()" aria-label="내 생활 플랫폼 홈"><img class="platform-logo" src="app-icon.svg" width="33" height="33" alt="">내 생활</button>
+  <button id="sharedSettingsButton" class="platform-settings" onclick="openSharedSettings()">설정·백업</button>
+  <button id="platformHomeButton" class="platform-settings" onclick="openPlatform()" hidden>← 플랫폼 홈</button>
+</header>
+<aside class="side" id="appShell" hidden>
+<div class="platform-backbar"><button id="backToPlatform" onclick="openPlatform()">← 플랫폼 홈</button><span id="appLabel">가계부</span></div>
+<header id="ledgerHeader">
+  <div class="brand">가계부</div>
   <div class="mnav"><button onclick="movePeriod(-1)">‹</button><span id="plabel"></span><button onclick="movePeriod(1)">›</button></div>
   <div class="lbl">고정지출 빼고 남은 돈</div>
   <div class="big" id="remain"></div>  <div class="pills">
@@ -182,13 +192,19 @@ nav button.on{color:var(--accent);font-weight:700}
     <div class="pill">고정지출<b id="pFixed"></b></div>
     <div class="pill">이번 기간 지출<b id="pSpent"></b></div>
   </div>
-  <div class="sy" id="syncSt"></div>
 </header>
-<button class="fab" onclick="openSheet()">+<span class="fabt"> 기록 추가</span></button>
-<nav>
+<header id="fridgeHeader" hidden><h2 class="fridge-side-title">냉장고</h2><p class="fridge-side-help">구매한 식재료부터 소비 기록까지,<br>우리 집 먹거리를 관리해요.</p></header>
+<div class="sy app-sync" id="syncSt"></div>
+<button id="addRecord" class="fab" onclick="activeApp==='fridge'?openFoodSheet():openSheet()" aria-label="기록 추가">+<span class="fabt"> 기록 추가</span></button>
+<nav id="ledgerNav" aria-label="가계부 메뉴">
   <button id="t-home" onclick="go('home')">요약</button>
   <button id="t-list" onclick="go('list')">내역</button>
-  <button id="t-set" onclick="go('set')">설정</button>
+  <button id="t-set" onclick="go('set')">가계부 설정</button>
+</nav>
+<nav id="fridgeNav" aria-label="냉장고 메뉴" hidden>
+  <button id="f-active" onclick="openApp('fridge')">보관 목록</button>
+  <button id="f-pending" onclick="openApp('fridge','pending')">등록 대기<span id="foodNavCount" class="food-nav-count" aria-live="polite"></span></button>
+  <button id="f-history" onclick="openApp('fridge','history')">소비·폐기</button>
 </nav>
 </aside>
 <main id="view"></main>
@@ -210,6 +226,15 @@ nav button.on{color:var(--accent);font-weight:700}
     <input id="fMemo" placeholder="메모 (예: 점심 김밥)" autocomplete="off" oninput="suggest()" onfocus="suggest()" onblur="setTimeout(hideSug,150)" onkeydown="sugKey(event)">
     <div class="sug" id="fSug"></div>
     <input id="fDate" type="date">
+    <div id="fFoodW">
+      <label>구매한 식품 (선택)</label>
+      <div class="food-checks">
+        <label><input type="checkbox" value="chilled">냉장</label>
+        <label><input type="checkbox" value="frozen">냉동</label>
+        <label><input type="checkbox" value="pantry">실온</label>
+      </div>
+      <p class="food-help">체크하면 냉장고에 등록 대기가 생겨요. 제품별 정보는 나중에 입력하세요.</p>
+    </div>
     <button class="btn" onclick="saveTx()">저장</button>
     <button class="btn danger" id="fDel" onclick="delTx()">삭제</button>
     <button class="btn ghost" onclick="closeSheet()">취소</button>
@@ -232,6 +257,35 @@ nav button.on{color:var(--accent);font-weight:700}
   </div>
 </div>
 
+<!-- 구매 대기에서도, 직접 등록에서도 같은 제품 입력 화면을 사용 -->
+<div class="sheet" id="foodSheet" onclick="if(event.target===this)closeFoodSheet()">
+  <section class="panel food-form" role="dialog" aria-modal="true" aria-labelledby="fdTitle">
+    <h2 class="st" id="fdTitle">식재료 등록</h2>
+    <p class="food-help">구매일·보관 장소·표시된 기한을 기록해 두세요.</p>
+    <div id="fdSource" class="food-form-source" hidden></div>
+    <p id="fdProgress" class="food-saved" aria-live="polite" hidden></p>
+    <p id="fdNotice" class="food-notice" role="status"></p>
+    <form onsubmit="saveFood(event)">
+      <label for="fdName">제품 이름</label>
+      <input id="fdName" placeholder="예: 우유, 계란, 대파" maxlength="80" required autocomplete="off">
+      <label for="fdStore">보관 장소</label>
+      <select id="fdStore"><option value="chilled">냉장</option><option value="frozen">냉동</option><option value="pantry">실온</option></select>
+      <div class="row2"><div><label for="fdQty">수량</label><input id="fdQty" type="number" inputmode="decimal" min="0.001" step="any" value="1" required></div><div><label for="fdUnit">단위</label><input id="fdUnit" placeholder="개, 팩, 봉, g" value="개" maxlength="12"></div></div>
+      <div class="row2"><div><label for="fdBought">구매일</label><input id="fdBought" type="date"></div><div><label for="fdExpiry">표시된 기한 (선택)</label><input id="fdExpiry" type="date"></div></div>
+      <small class="food-help">포장에 적힌 소비기한·유통기한을 입력하세요. 모르면 비워 두어도 돼요.</small>
+      <label class="food-open"><input id="fdOpened" type="checkbox" onchange="toggleFoodOpened()">이미 개봉했어요</label>
+      <div id="fdOpenedDate" hidden><label for="fdOpenedAt">개봉일</label><input id="fdOpenedAt" type="date"></div>
+      <div id="fdStatusRow" class="food-status-row" hidden><label for="fdStatus">사용 상태</label><select id="fdStatus"><option value="active">보관 중</option><option value="consumed">다 먹음</option><option value="discarded">폐기</option></select></div>
+      <button id="fdSave" class="btn" type="submit">식재료 저장</button>
+      <button id="fdFinish" class="btn ghost" type="button" onclick="finishFoodTask()" hidden>등록 완료</button>
+      <button id="fdDelete" class="btn danger" type="button" onclick="deleteFood()" hidden>식재료 기록 삭제</button>
+      <button class="btn ghost" type="button" onclick="closeFoodSheet()">닫기 · 나중에 계속</button>
+    </form>
+  </section>
+</div>
+
+<script src="fridge.js"></script>
+<script src="platform.js"></script>
 <script>
 const KEY='my-gagyebu-v2';
 let START_DAY=1; // 예산 기간 시작일 (설정 탭에서 변경, 기록과 함께 저장됨)
@@ -261,10 +315,10 @@ const order=d=>d>=START_DAY?d-START_DAY:d+31;
 // ---- 저장 ----
 let tab='home',fType='out',fCat=OUT_CATS[0],editId=null,editFx=null,selDay=null,selCat=null;
 let S=load(); START_DAY=dayOf(S); S.cur=periodOf(today());
-function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.p)return s}catch(e){}return{p:{}}}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.p)return prepareFoodData(s)}catch(e){}return prepareFoodData({p:{}})}
 // 시작일이 저장돼 있지 않은 예전 기록은 기간 이름(예: 2026-10-21)에서 읽어옴
 function dayOf(s){const k=Object.keys(s.p)[0];return s.day||(k?Number(k.slice(8)):1)}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장에 실패했어요. 백업을 먼저 받아두세요.')}
+function save(){S.schemaVersion=3;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장에 실패했어요. 백업을 먼저 받아두세요.')}
   if(syncOn()){SY.dirty=true;saveSY();seq++;clearTimeout(pushTimer);pushTimer=setTimeout(push,800)}}
 
 function ensure(k){
@@ -284,9 +338,10 @@ function calc(k){const m=S.p[k];
   return{fixed,spent,inc,planned,remain:(m.start||0)-fixed-spent+inc-planned}}
 // 기록(tx)과 예정 지출(plan)을 함께 찾음. a = 들어 있는 목록 이름
 function findTx(id){for(const k in S.p)for(const a of ['tx','plan']){const l=S.p[k][a]||[],i=l.findIndex(t=>t.id===id);if(i>=0)return{k,i,a,t:l[i]}}return null}
+function newTxId(){let id=Date.now();while(findTx(id))id++;return id}
 
 function movePeriod(d){S.cur=shiftPeriod(S.cur,d);selDay=selCat=null;render()}
-function go(t){tab=t;render()}
+function go(t){if(t==='fridge')openApp('fridge');else openApp('ledger',t)}
 // 넓은 화면(데스크탑)에서는 요약과 내역을 한 화면에 나란히 보여줌
 const wide=window.matchMedia('(min-width:960px)');
 wide.addEventListener('change',()=>render());
@@ -302,9 +357,11 @@ function render(){
   // 예정 지출은 아직 안 쓴 돈이라 지출 합계엔 안 넣고 아래에 작게 (남은 돈에서는 미리 뺌)
   $('pSpent').innerHTML=won(c.spent)+(c.planned?`<small>지출 예정 ${won(c.planned)}</small>`:'');
   const t=wide.matches&&tab==='list'?'home':tab;
-  ['home','list','set'].forEach(x=>$('t-'+x).classList.toggle('on',x===t));
-  $('view').innerHTML=t==='set'?settings(m):t==='list'?list(m)
+  ['home','list','set'].forEach(x=>{$('t-'+x).classList.toggle('on',activeApp==='ledger'&&x===t);$('t-'+x).setAttribute('aria-current',activeApp==='ledger'&&x===t?'page':'false')});
+  updatePlatformShell();
+  $('view').innerHTML=activeApp==='platform'?platformPage():activeApp==='settings'?sharedSettings():activeApp==='fridge'?fridgePage():t==='set'?settings(m):t==='list'?list(m)
     :wide.matches?`<div class="cols"><div>${home(m,c)}</div><div>${list(m)}</div></div>`:home(m,c);
+  updateFoodNav();
 }
 
 function sortedFixed(m){return m.fixed.map((f,i)=>({...f,i})).sort((a,b)=>order(a.day)-order(b.day))}
@@ -354,7 +411,7 @@ function home(m,c){let h='';
   if(m.start===null)h+=`<div class="card"><h2>이번 기간 시작 잔고를 입력해 주세요</h2>
     <p class="muted">예: 월급 3,200,000원을 넣으면 고정지출을 뺀 남은 돈을 자동으로 계산해요.</p>
     <button class="btn" onclick="go('set')">잔고 입력하러 가기</button></div>`;
-  h+=fixedCard(m)+planCard(m);
+  h+=foodTaskSummary()+fixedCard(m)+planCard(m);
   const by={};m.tx.filter(t=>t.type==='out').forEach(t=>by[t.cat]=(by[t.cat]||0)+net(t));
   const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
   h+=`<div class="card"><h2>분야별 지출${rows.length?' <span class="muted">눌러서 내역 보기</span>':''}</h2>`;
@@ -432,10 +489,13 @@ function settings(m){
   <div class="chips">${catsOf(t).map((c,i)=>`<span class="chip ed">${esc(c)}<button onclick="delCat('${t}',${i})" aria-label="${esc(c)} 빼기">×</button></span>`).join('')}</div>
   <div class="row2"><input id="nc-${t}" placeholder="새 ${t==='out'?'지출':'수입'} 분야 (예: 반려동물)" maxlength="10" onkeydown="if(event.key==='Enter')addCat('${t}')">
   <button class="btn ghost" style="margin-top:0;margin-bottom:8px;flex:0 0 80px" onclick="addCat('${t}')">추가</button></div>`).join('')}</div>
+  <div class="card"><h2>동기화·백업</h2><p class="muted">모든 앱의 데이터는 플랫폼 공통 설정에서 함께 관리해요.</p><button class="btn ghost" onclick="openSharedSettings()">공통 설정 열기</button></div></div>`}
 
-  ${syncCard()}
+function sharedSettings(){
+  return `<div class="platform-settings-intro"><h1>공통 설정</h1><p>가계부와 냉장고의 연결·백업을 함께 관리해요.</p></div><div class="setg">${syncCard()}
 
-  <div class="card"><h2>백업</h2>
+  <div class="card"><h2>가계부·냉장고 백업</h2>
+  <p class="muted" style="margin-bottom:6px">지출, 식재료 등록 대기, 냉장고 재고를 함께 저장하고 불러와요.</p>
   <p class="muted" style="margin-bottom:6px">${syncOn()?'구글 시트에도 저장되고 있어요. 그래도 가끔 백업 파일을 받아두면 더 안전해요.'
     :'기록은 이 기기의 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업해 두세요.'}</p>
   <button class="btn ghost" onclick="exportData()">백업 파일 저장</button>
@@ -443,7 +503,7 @@ function settings(m){
   <input type="file" id="imp" accept=".json,application/json" style="display:none" onchange="importData(this)">
   <button class="btn danger" onclick="resetAll()">모든 기록 삭제</button></div></div>`}
 
-function saveStart(){const v=$('sStart').value.trim();cur().start=v===''?null:num(v);save();tab='home';render()}
+function saveStart(){const v=$('sStart').value.trim();cur().start=v===''?null:num(v);save();go('home')}
 // 시작일을 바꾸면 기존 기간의 잔고·고정지출은 같은 달로 옮기고, 기록은 날짜에 맞는 기간으로 다시 나눔
 function saveDay(){const d=num($('sDay').value);if(d<1||d>28)return alert('1~28 사이로 입력해 주세요');
   if(d===START_DAY)return;
@@ -494,8 +554,8 @@ function openSheet(id){
   if(editId&&!f)return;
   $('sTitle').textContent=f?(f.a==='plan'?'예정 지출 수정':'기록 수정'):'기록 추가';
   $('fDel').style.display=f?'block':'none';
-  if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fBack').value=t.back?t.back.toLocaleString('ko-KR'):'';$('fMemo').value=bare(t.memo||'');$('fDate').value=t.date}
-  else{setType('out');setPay(lastPay);$('fAmt').value='';$('fBack').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur}
+  if(f){const t=f.t;setType(t.type,t.cat);setPay(t.pay||'chk');$('fAmt').value=t.amt.toLocaleString('ko-KR');$('fBack').value=t.back?t.back.toLocaleString('ko-KR'):'';$('fMemo').value=bare(t.memo||'');$('fDate').value=t.date;fillFoodStores(t.foodStores||[])}
+  else{setType('out');setPay(lastPay);$('fAmt').value='';$('fBack').value='';$('fMemo').value='';$('fDate').value=periodOf(today())===S.cur?today():S.cur;fillFoodStores()}
   hideSug();calcEl='fAmt';setSplit(0);setBackMode('back');showDutch(!!$('fBack').value);calcShow();$('sheet').classList.add('show');
   if(!f)setTimeout(()=>$('fAmt').focus(),100)}
 function closeSheet(){$('sheet').classList.remove('show')}
@@ -508,6 +568,7 @@ function confirmPlan(id){const g=findTx(id);if(!g)return;const t=g.t;
 let fCats=[];
 function setType(t,cat){fType=t;const cats=catsOf(t==='plan'?'out':t);fCats=cat&&!cats.includes(cat)?[...cats,cat]:cats;fCat=fCats.includes(cat)?cat:fCats[0];
   $('sOut').classList.toggle('on',t==='out');$('sIn').classList.toggle('on',t==='in');$('sPlan').classList.toggle('on',t==='plan');$('fPay').style.display=t==='out'?'flex':'none';$('fBackW').style.display=t==='out'?'block':'none';
+  $('fFoodW').hidden=t!=='out';
   $('fCats').innerHTML=fCats.map((c,i)=>`<button class="chip${c===fCat?' on':''}" onclick="pickCat(this,${i})">${esc(c)}</button>`).join('')}
 // 결제수단: 마지막에 고른 걸 이 기기에 기억해 둠
 const PKEY='my-gagyebu-pay';
@@ -519,7 +580,10 @@ function saveTx(){const amt=calcAmt();if(amt<=0)return alert('금액을 입력�
   if(back<0)return alert('내가 쓴 돈이 결제 금액보다 많아요');
   const memo=$('fMemo').value.trim();
   const date=$('fDate').value||today(),k=periodOf(date);
-  const rec={id:editId||Date.now(),type:fType,amt,cat:fCat,memo,date};
+  const old=editId&&findTx(editId)?.t;
+  const rec={...old,id:editId||newTxId(),type:fType,amt,cat:fCat,memo,date};
+  delete rec.pay;delete rec.back;
+  applyFoodPurchase(rec,old,selectedFoodStores());
   if(fType==='out'){if(fPay==='credit')rec.pay='credit';if(back)rec.back=back;lastPay=fPay;try{localStorage.setItem(PKEY,fPay)}catch(e){}}
   if(editId){const f=findTx(editId);if(f)S.p[f.k][f.a].splice(f.i,1)}
   if(fromPlan){const g=findTx(fromPlan);if(g&&g.a==='plan')S.p[g.k].plan.splice(g.i,1)}
@@ -589,7 +653,7 @@ function sugKey(e){if(!sugs.length||e.isComposing)return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();sugOn=(sugOn+(e.key==='ArrowDown'?1:sugs.length-1+(sugOn<0?1:0)))%sugs.length;drawSug($('fMemo').value.trim())}
   else if(e.key==='Enter'&&sugOn>=0){e.preventDefault();useSug(sugOn)}
   else if(e.key==='Escape'){e.preventDefault();hideSug()}}
-function delTx(){if(!editId||!confirm('이 기록을 삭제할까요?'))return;
+function delTx(){if(!editId||!confirm('이 기록을 삭제할까요?'+(foodsForTask(editId).length?'\n이미 등록한 냉장고 식재료는 그대로 남아요.':'')))return;
   const f=findTx(editId);if(f)S.p[f.k][f.a].splice(f.i,1);save();closeSheet();render()}
 
 // ---- 백업 ----
@@ -597,10 +661,10 @@ function exportData(){const b=new Blob([JSON.stringify(S)],{type:'application/js
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='가계부백업_'+today()+'.json';a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.p)throw 0;
-    if(confirm('지금 기록을 백업 내용으로 바꿀까요?')){S=d;START_DAY=dayOf(S);S.cur=periodOf(today());save();render()}}
+  r.onload=()=>{try{const d=prepareFoodData(JSON.parse(r.result));
+    if(confirm('지금 가계부와 냉장고 기록을 백업 내용으로 바꿀까요?\n예전 가계부 전용 백업에는 냉장고 기록이 없어요.')){S=d;START_DAY=dayOf(S);S.cur=periodOf(today());save();render()}}
     catch(e){alert('올바른 백업 파일이 아니에요')}};r.readAsText(f);inp.value=''}
-function resetAll(){if(confirm('정말 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S={cur:periodOf(today()),day:START_DAY,p:{}};save();tab='home';render()}}
+function resetAll(){if(confirm('정말 가계부와 냉장고의 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S=prepareFoodData({cur:periodOf(today()),day:START_DAY,p:{}});save();openPlatform()}}
 
 // ---- 구글 시트 동기화 ----
 const SKEY='my-gagyebu-sync';
@@ -628,11 +692,11 @@ function syncInfo(){return syncState==='err'?'지금은 연결이 안 돼서 이
   :'연결됨 · 마지막 동기화 '+(SY.at||'-')}
 function stamp(){const d=new Date();SY.at=`${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;saveSY();setSync('ok')}
 // 보내는 중에 앱을 닫아도 끝까지 전송되도록 keepalive 사용 (브라우저 제한 64KB 이하일 때만)
-async function api(body){const str=body&&JSON.stringify({key:SY.key,...body});
+async function api(body){const str=body&&JSON.stringify({key:SY.key,clientSchema:3,...body});
   const r=body?await fetch(SY.url,{method:'POST',body:str,keepalive:str.length<60000})
-    :await fetch(SY.url+'?key='+encodeURIComponent(SY.key));
+    :await fetch(SY.url+'?key='+encodeURIComponent(SY.key)+'&clientSchema=3');
   const j=await r.json();if(j.error)throw new Error(j.error);return j}
-function adopt(j){const c=S.cur,d0=START_DAY;S=j.data&&j.data.p?j.data:{p:{}};START_DAY=dayOf(S);
+function adopt(j){const c=S.cur,d0=START_DAY;S=prepareFoodData(j.data&&j.data.p?j.data:{p:{}});START_DAY=dayOf(S);
   S.cur=START_DAY===d0?c:periodOf(today());SY.ver=j.ver;SY.dirty=false;SY.sent=[];if(j.data)setBase(JSON.stringify(j.data));
   try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}stamp();render()}
 
@@ -664,7 +728,9 @@ function resolve(c){const rs=JSON.stringify(c.data),B=getBase();
 // B(마지막으로 맞춘 기록) 기준으로 L(이 기기)과 R(시트)에서 바뀐 것을 합침.
 // 기록은 id별로, 나머지 설정은 항목별로: 한쪽만 바꿨으면 바꾼 쪽, 둘 다 바꿨으면 이 기기 쪽
 function merge3(B,L,R){const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b),pick=(b,l,r)=>eq(l,b)?r:l,out={p:{}};
-  for(const k of new Set([...Object.keys(L),...Object.keys(R)]))if(k!=='p'){const v=k==='cur'?L.cur:pick(B[k],L[k],R[k]);if(v!==undefined)out[k]=v}
+  try{if(typeof B==='string')B=JSON.parse(B)}catch(e){return null}
+  for(const k of new Set([...Object.keys(L),...Object.keys(R)]))if(k!=='p'&&k!=='foods'){const v=k==='cur'?L.cur:pick(B[k],L[k],R[k]);if(v!==undefined)out[k]=v}
+  out.foods=mergeFoodRecords(B.foods,L.foods,R.foods);out.schemaVersion=3;
   for(const k of new Set([...Object.keys(L.p),...Object.keys(R.p)])){const b=B.p&&B.p[k]||{},l=L.p[k],r=R.p[k],m={};
     if(!l||!r){const{tx,plan,...rest}=l||r;out.p[k]={...rest,tx:[]};continue}
     for(const f of new Set([...Object.keys(l),...Object.keys(r)]))if(f!=='tx'&&f!=='plan'){const v=pick(b[f],l[f],r[f]);if(v!==undefined)m[f]=v}
@@ -673,7 +739,8 @@ function merge3(B,L,R){const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b),pic
   const fb=flat(B),fl=flat(L),fr=flat(R);
   for(const id of new Set([...Object.keys(fl),...Object.keys(fr)])){const b=fb[id],l=fl[id],r=fr[id];
     // 새로 생김 → 넣음 / 한쪽에서 지움 → 다른 쪽이 안 고쳤으면 지움 / 둘 다 있음 → 바꾼 쪽
-    const x=!b?l||r:!l?(eq(r,b)?null:r):!r?(eq(l,b)?null:l):eq(l,b)?r:l;
+    let x=!b?l||r:!l?(eq(r,b)?null:r):!r?(eq(l,b)?null:l):eq(l,b)?r:l;
+    if(b&&l&&r){const merged=mergeFoodRecords({item:b.t},{item:l.t},{item:r.t}).item;x={...(merged.date===l.t.date?l:r),t:merged}}
     if(x){const P=out.p[x.k];(P[x.a]||(P[x.a]=[])).push(x.t)}}
   return out}
 
@@ -695,7 +762,7 @@ async function connectSync(){
   try{j=await api()}catch(e){SY={};setSync('');
     return alert(e.message==='auth'?'비밀번호가 맞지 않아요. Apps Script의 SECRET 값과 같은지 확인해 주세요.'
       :'연결하지 못했어요. URL과 배포 설정(액세스 권한: 모든 사용자)을 확인해 주세요.')}
-  const hasLocal=Object.values(S.p).some(m=>m.tx.length||m.start!==null);
+  const hasLocal=Object.values(S.p).some(m=>m.tx.length||m.start!==null)||foodItems().length>0;
   if(j.data&&(!hasLocal||confirm('시트에 이미 기록이 있어요.\n\n[확인] 시트 기록 불러오기\n[취소] 이 기기 기록으로 시트 덮어쓰기')))adopt(j);
   else{SY.ver=j.ver;SY.dirty=true;seq++;saveSY();await push(true)}
   render()}
@@ -714,7 +781,7 @@ function syncCard(){
   <button class="btn ghost" onclick="pull()">지금 동기화</button>
   <button class="btn danger" onclick="disconnect()">연결 해제 (이 기기만)</button></div>`}
 
-render();
+restoreAppRoute();
 if(syncOn()){setSync('');pull()}
 // 앱을 내리거나 닫으면 기다리던 전송을 바로 보냄 (보내는 중이어도 한 번 더)
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull();else if(SY.dirty){clearTimeout(pushTimer);push(false,true)}});

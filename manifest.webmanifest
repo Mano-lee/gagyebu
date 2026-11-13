@@ -1,13 +1,14 @@
 {
-  "name": "내 가계부",
-  "short_name": "가계부",
+  "name": "내 생활",
+  "short_name": "내 생활",
+  "description": "가계부와 냉장고를 한곳에서 관리하는 생활 플랫폼",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f4f1ea",
   "theme_color": "#1f6f5c",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }
