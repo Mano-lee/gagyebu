@@ -9,6 +9,7 @@ const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const core=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m=>m[1]).filter(Boolean).join('\n');
 const fridge=fs.readFileSync(path.join(root,'fridge.js'),'utf8');
 const platform=fs.readFileSync(path.join(root,'platform.js'),'utf8');
+const recipes=fs.readFileSync(path.join(root,'recipes.js'),'utf8');
 const clone=x=>JSON.parse(JSON.stringify(x));
 function app(initial){
   const elements=new Map(),memory=new Map(),alerts=[];
@@ -30,6 +31,7 @@ function app(initial){
     back(){this.go(-1)},forward(){this.go(1)}
   };
   const context=vm.createContext({console,Date,crypto:webcrypto,Blob,URL,setTimeout(){},clearTimeout(){},alert:m=>alerts.push(m),confirm:()=>true,navigator:{},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},document:{body:element('body'),getElementById:element,addEventListener(){},querySelectorAll:selector=>selector==='#fFoodW input'?checks:selector==='#fFoodW input:checked'?checks.filter(c=>c.checked):[]},window:{location,history,matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(type,listener){if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(listener)}}});
+  vm.runInContext(recipes,context,{filename:'recipes.js'});
   vm.runInContext(fridge,context,{filename:'fridge.js'});
   vm.runInContext(platform,context,{filename:'platform.js'});
   vm.runInContext(core,context,{filename:'index-inline.js'});
@@ -59,7 +61,7 @@ test('platform is the initial screen and each app shows only its own menus',()=>
   a.run('openPlatform()');assert.equal(a.el('appShell').hidden,true);
 });
 test('shared settings contains sync and backup while ledger settings contains budget controls',()=>{
-  const a=app();a.run('openSharedSettings()');assert.ok(a.el('view').innerHTML.includes('가계부·냉장고 백업'));assert.ok(!a.el('view').innerHTML.includes('id="sStart"'));
+  const a=app();a.run('openSharedSettings()');assert.ok(a.el('view').innerHTML.includes('가계부·냉장고·레시피 백업'));assert.ok(!a.el('view').innerHTML.includes('id="sStart"'));
   a.run('go("set")');assert.ok(a.el('view').innerHTML.includes('id="sStart"'));assert.ok(!a.el('view').innerHTML.includes('onclick="resetAll()"'));
 });
 test('platform shortcuts clear old fridge filters and select the requested section',()=>{
@@ -405,5 +407,86 @@ test('Apps Script accepts new clients and blocks older clients after fridge migr
   assert.equal(vm.runInContext('handle(SECRET,null,0).error',d),'upgrade');
   assert.equal(vm.runInContext('handle(SECRET,{base:1,data:{}},0).error',d),'upgrade');assert.equal(writes,0);
   assert.equal(vm.runInContext('handle(SECRET,{base:1,data:{}},3).ok',d),true);assert.equal(writes,1);
+  current={ver:2,data:{schemaVersion:4,p:{},recipes:{}}};
+  assert.equal(vm.runInContext('handle(SECRET,null,3).error',d),'upgrade');
+  assert.equal(vm.runInContext('handle(SECRET,{base:2,data:{}},3).error',d),'upgrade');assert.equal(writes,1);
+  assert.equal(vm.runInContext('handle(SECRET,{base:2,data:{}},4).ok',d),true);assert.equal(writes,2);
   current={ver:1,data:{p:{}}};assert.equal(vm.runInContext('handle(SECRET,null,0).ver',d),1);
+});
+
+function addRecipe(a,title='김치볶음밥'){
+  a.run('openApp("recipes");openRecipeSheet()');a.el('rc-title').value=title;
+  a.el('rc-ingredients').value='김치 100g\n밥 1공기';a.el('rc-steps').value='김치를 볶아요.\n밥을 넣어요.';a.el('rc-tags').value='한식, 간단 요리';
+  a.run('saveRecipe()');return a.run('recipeItems().at(-1).id');
+}
+test('recipe app preserves old data and uses only its own navigation',()=>{
+  const a=app();addPurchase(a);const purchase=a.json('cur().tx');
+  a.run('openApp("recipes")');assert.equal(a.el('recipeNav').hidden,false);assert.equal(a.el('recipeHeader').hidden,false);
+  assert.equal(a.el('ledgerNav').hidden,true);assert.equal(a.el('fridgeNav').hidden,true);assert.deepEqual(a.json('S.recipes'),{});
+  assert.deepEqual(a.json('cur().tx'),purchase);assert.equal(a.run('PLATFORM_APPS.some(app=>app.id==="recipes")'),true);
+});
+test('recipes save, edit and reload with source, text and photos included in shared state',()=>{
+  const a=app(),id=addRecipe(a);a.run(`openRecipeSheet('${id}')`);a.el('rc-source').value='가족 노트';a.el('rc-url').value='https://example.com/recipe';
+  a.el('rc-original').value='가져온 원문';a.run(`recipeDraftImages=['data:image/png;base64,aGVsbG8='];saveRecipe()`);
+  assert.equal(a.run('currentAppRoute.section'),id);const b=app(a.json('S'));
+  assert.equal(b.run(`S.recipes['${id}'].source`),'가족 노트');assert.equal(b.run(`S.recipes['${id}'].images.length`),1);
+  assert.equal(b.run('recipeItems().length'),1);assert.equal(b.run('S.schemaVersion'),4);
+  b.run(`openApp('recipes','${id}')`);assert.ok(b.el('view').innerHTML.includes('가져온 원문'));assert.ok(b.el('view').innerHTML.includes('rel="noopener noreferrer"'));
+});
+test('recipe search covers ingredients, source and tags and favorites filter independently',()=>{
+  const a=app(),id=addRecipe(a);addRecipe(a,'우유 푸딩');a.run(`S.recipes['${id}'].source='엄마';S.recipes['${id}'].favorite=true;openApp('recipes','favorites')`);
+  assert.equal(a.run('recipeResults().length'),1);a.run(`recipeQuery='김치'`);assert.equal(a.run('recipeResults().length'),1);
+  a.run(`recipeQuery='엄마'`);assert.equal(a.run('recipeResults().length'),1);a.run(`recipeQuery='없는 재료'`);assert.equal(a.run('recipeResults().length'),0);
+  a.run(`recipeQuery='';recipeTag='간단 요리';openApp('recipes')`);assert.equal(a.run('recipeResults().length'),2);
+});
+test('recipe paste splits labeled sections and keeps original unstructured text unchanged',()=>{
+  const a=app();a.run('openRecipeSheet()');a.el('rc-original').value='김치볶음밥\n[재료]\n김치 100g\n밥 1공기\n[만드는 법]\n1. 김치를 볶아요.\n2. 밥을 넣어요.';a.run('splitRecipeText()');
+  assert.equal(a.el('rc-ingredients').value,'김치 100g\n밥 1공기');assert.equal(a.el('rc-steps').value,'1. 김치를 볶아요.\n2. 밥을 넣어요.');
+  a.el('rc-original').value='제목 없는 복사한 글';a.run('splitRecipeText()');assert.equal(a.el('rc-original').value,'제목 없는 복사한 글');assert.ok(a.el('rcNotice').textContent.includes('찾지 못했어요'));
+});
+test('recipe title and safe URL validation prevent invalid saves and escape all displayed text',()=>{
+  const a=app();a.run('openRecipeSheet();saveRecipe()');assert.equal(a.run('recipeItems().length'),0);
+  a.el('rc-title').value='<img src=x onerror=alert(1)>';a.el('rc-url').value='javascript:alert(1)';a.run('saveRecipe()');assert.equal(a.run('recipeItems().length'),0);
+  a.el('rc-url').value='https://example.com';a.run('saveRecipe()');assert.equal(a.run('recipeItems().length'),1);
+  assert.ok(a.el('view').innerHTML.includes('&lt;img'));assert.ok(!a.el('view').innerHTML.includes('<img src=x'));
+  assert.throws(()=>a.run(`prepareRecipeData({recipes:{bad:{id:'bad',title:'x',url:'javascript:alert(1)'}}})`));
+  assert.throws(()=>a.run(`prepareRecipeData({recipes:{bad:{id:'bad',title:'x',images:['data:image/svg+xml;base64,aGVsbG8=']}}})`));
+  assert.throws(()=>a.run(`prepareRecipeData({recipes:JSON.parse('{"__proto__":{"id":"__proto__","title":"x"}}')})`));
+  assert.throws(()=>a.run(`prepareRecipeData({recipes:[]})`));
+});
+test('recipe back protects unsaved text and photos and restores list filters',()=>{
+  const a=app();a.run(`openApp('recipes','favorites');recipeQuery='김치';openRecipeSheet()`);a.el('rc-title').value='작성 중';
+  a.context.confirm=()=>false;a.run('window.history.back()');assert.equal(a.el('recipeSheet').classList.contains('show'),true);assert.equal(a.el('rc-title').value,'작성 중');
+  a.run('openPlatform()');assert.equal(a.run('activeApp'),'recipes');
+  a.context.confirm=()=>true;a.run('window.history.back()');assert.equal(a.el('recipeSheet').classList.contains('show'),false);assert.equal(a.run('recipeQuery'),'김치');assert.equal(a.run('currentAppRoute.section'),'favorites');
+  a.run(`openRecipeSheet();recipeDraftImages=['data:image/png;base64,aGVsbG8=']`);a.context.confirm=()=>false;a.run('closeRecipeSheet()');assert.equal(a.el('recipeSheet').classList.contains('show'),true);
+});
+test('recipe saving and deletion consume dialog history and deleted editors cannot restore',()=>{
+  const a=app(),id=addRecipe(a);a.run(`openRecipeSheet('${id}');deleteRecipe()`);assert.equal(a.run('recipeItems().length'),0);assert.equal(a.run('activeApp'),'recipes');
+  a.run('window.history.back();window.history.forward()');assert.equal(a.el('recipeSheet').classList.contains('show'),false);
+});
+test('recipe save failure retains editor draft and rolls back memory and favorite state',()=>{
+  const a=app(),id=addRecipe(a);a.run(`openRecipeSheet('${id}')`);a.el('rc-title').value='저장 실패한 제목';
+  a.context.localStorage.setItem=()=>{throw new Error('QuotaExceededError')};a.run('saveRecipe()');
+  assert.equal(a.run(`S.recipes['${id}'].title`),'김치볶음밥');assert.equal(a.el('rc-title').value,'저장 실패한 제목');assert.equal(a.el('recipeSheet').classList.contains('show'),true);
+  a.run(`toggleRecipeFavorite('${id}')`);assert.equal(a.run(`S.recipes['${id}'].favorite`),false);
+});
+test('recipe sync combines additions, field edits and deletion without changing linked purchases',()=>{
+  const a=app(),id=addRecipe(a);addPurchase(a);const base=a.json('S'),left=clone(base),right=clone(base);
+  left.recipes[id].notes='소금 적게';right.recipes[id].title='새 이름';right.recipes.remote={...right.recipes[id],id:'remote'};
+  a.context.base=base;a.context.left=left;a.context.right=right;const merged=a.json('merge3(JSON.stringify(base),left,right)');
+  assert.equal(merged.recipes[id].notes,'소금 적게');assert.equal(merged.recipes[id].title,'새 이름');assert.equal(Object.keys(merged.recipes).length,2);assert.deepEqual(merged.p,base.p);
+  delete left.recipes[id];right.recipes[id]=clone(base.recipes[id]);assert.equal(a.run(`merge3(JSON.stringify(base),left,right).recipes['${id}']`),undefined);
+});
+test('backup import and remote adoption keep existing records when larger recipe data cannot be stored',()=>{
+  const a=app();addRecipe(a);addPurchase(a);const before=a.json('S');
+  a.context.FileReader=class{readAsText(file){this.result=file;this.onload()}};
+  a.el('imp').files=[JSON.stringify({p:{},recipes:{remote:{id:'remote',title:'더 큰 사진 백업'}}})];
+  a.context.localStorage.setItem=()=>{throw new Error('QuotaExceededError')};a.run(`importData($('imp'))`);assert.deepEqual(a.json('S'),before);
+  a.context.remote={ver:9,data:{p:{},recipes:{remote:{id:'remote',title:'다른 기기의 사진'}}}};
+  assert.equal(a.run('adopt(remote)'),false);assert.deepEqual(a.json('S'),before);assert.notEqual(a.run('SY.ver'),9);
+});
+test('a full storage clears a stale merge baseline rather than keeping the wrong synced version',()=>{
+  const a=app();a.memory.set('my-gagyebu-base','outdated');a.context.localStorage.setItem=()=>{throw new Error('QuotaExceededError')};
+  a.run('setBase("new baseline")');assert.equal(a.memory.has('my-gagyebu-base'),false);
 });

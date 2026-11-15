@@ -1,6 +1,6 @@
-// 페이지와 냉장고 화면의 파일을 함께 저장해 오프라인에서도 사용할 수 있게 한다.
-const CACHE = 'gagyebu-platform-v10';
-const ASSETS = ['./', './fridge.js', './fridge.css', './platform.js', './platform.css', './manifest.webmanifest', './app-icon.svg', './app-icon-192.png', './app-icon-512.png', './apple-touch-icon.png', './favicon-32.png'];
+// 플랫폼과 모든 앱의 파일을 함께 저장해 오프라인에서도 사용할 수 있게 한다.
+const CACHE = 'gagyebu-platform-v11';
+const ASSETS = ['./', './fridge.js', './fridge.css', './platform.js', './platform.css', './recipes.js', './recipes.css', './manifest.webmanifest', './app-icon.svg', './app-icon-192.png', './app-icon-512.png', './apple-touch-icon.png', './favicon-32.png'];
 const assetURLs = new Set(ASSETS.map(path => new URL(path, self.registration.scope).href));
 
 self.addEventListener('install', event => {
