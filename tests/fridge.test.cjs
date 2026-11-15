@@ -490,3 +490,34 @@ test('a full storage clears a stale merge baseline rather than keeping the wrong
   const a=app();a.memory.set('my-gagyebu-base','outdated');a.context.localStorage.setItem=()=>{throw new Error('QuotaExceededError')};
   a.run('setBase("new baseline")');assert.equal(a.memory.has('my-gagyebu-base'),false);
 });
+test('recipes without a category stay uncategorized without rewriting legacy records',()=>{
+  const initial={p:{},recipes:{old:{id:'old',title:'예전 레시피',tags:'간단 요리'}}},a=app(initial);
+  a.run(`openApp('recipes');recipeCategory='uncategorized'`);assert.equal(a.run('recipeResults().length'),1);
+  assert.equal(a.run(`recipeCategoryOf(S.recipes.old)`),'');assert.equal(Object.hasOwn(initial.recipes.old,'category'),false);
+  assert.ok(a.run('recipePage()').includes('미분류'));a.run(`openRecipeSheet('old')`);assert.equal(a.el('rc-category').value,'');
+});
+test('custom recipe categories survive reload and become reusable escaped choices',()=>{
+  const a=app(),id=addRecipe(a),name='나만의 <요리> & 음료';a.run(`openRecipeSheet('${id}')`);a.el('rc-category').value='  '+name+'  ';a.run('saveRecipe()');
+  const b=app(a.json('S'));assert.equal(b.run(`S.recipes['${id}'].category`),name);b.run(`openRecipeSheet('${id}')`);
+  assert.equal(b.el('rc-category').value,name);assert.ok(b.el('rcCategoryOptions').innerHTML.includes('나만의 &lt;요리&gt; &amp; 음료'));
+  assert.equal(b.json('recipeCategories()').filter(value=>value===name).length,1);
+  assert.throws(()=>b.run(`prepareRecipeData({recipes:{bad:{id:'bad',title:'x',category:[]}}})`));
+});
+test('category filters combine with search, tags and favorites and distinguish custom names from special options',()=>{
+  const a=app(),food=addRecipe(a),drink=addRecipe(a,'하이볼'),custom=addRecipe(a,'실험 음료');
+  a.run(`S.recipes['${food}'].category='한식';S.recipes['${drink}'].category='칵테일';S.recipes['${drink}'].favorite=true;S.recipes['${custom}'].category='uncategorized';recipeCategory='category:칵테일'`);
+  assert.deepEqual(a.json('recipeResults().map(item=>item.id)'),[drink]);a.run(`recipeTag='간단 요리';recipeQuery='칵테일';openApp('recipes','favorites')`);assert.equal(a.run('recipeResults().length'),1);
+  a.run(`recipeQuery='볶음밥'`);assert.equal(a.run('recipeResults().length'),0);a.run(`recipeQuery='';recipeTag='';openApp('recipes');recipeCategory='category:uncategorized'`);
+  assert.deepEqual(a.json('recipeResults().map(item=>item.id)'),[custom]);a.run(`recipeCategory='uncategorized'`);assert.equal(a.run('recipeResults().length'),0);
+  a.run(`delete S.recipes['${food}'].category`);assert.deepEqual(a.json('recipeResults().map(item=>item.id)'),[food]);
+});
+test('category-only changes are protected on Back and roll back if storage is full',()=>{
+  const a=app(),id=addRecipe(a);a.run(`openRecipeSheet('${id}')`);a.el('rc-category').value='한식';a.context.confirm=()=>false;a.run('window.history.back()');
+  assert.equal(a.el('recipeSheet').classList.contains('show'),true);assert.equal(a.el('rc-category').value,'한식');
+  a.context.localStorage.setItem=()=>{throw new Error('QuotaExceededError')};a.run('saveRecipe()');assert.equal(a.run(`S.recipes['${id}'].category`),'');assert.equal(a.el('rc-category').value,'한식');
+});
+test('recipe sync preserves category edits alongside notes from another device',()=>{
+  const a=app(),id=addRecipe(a),base=a.json('S'),left=clone(base),right=clone(base);
+  left.recipes[id].category='퓨전';right.recipes[id].notes='두 기기의 수정';a.context.base=base;a.context.left=left;a.context.right=right;
+  const merged=a.json('merge3(JSON.stringify(base),left,right)'),b=app(merged);assert.equal(b.run(`S.recipes['${id}'].category`),'퓨전');assert.equal(b.run(`S.recipes['${id}'].notes`),'두 기기의 수정');
+});
