@@ -8,6 +8,15 @@ body{font-family:system-ui,-apple-system,"Segoe UI","Malgun Gothic","Noto Sans K
 .platform-logo{display:block;flex:none;border-radius:10px}
 .platform-settings{border:1px solid var(--line);background:#fff9;color:var(--ink);padding:10px 13px;border-radius:10px;font:inherit;font-size:13px;cursor:pointer}
 .platform-apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));column-gap:18px;row-gap:24px;max-width:680px;align-items:start}
+.platform-app-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:680px;margin-bottom:14px}
+.platform-app-toolbar h2{font-size:13px;font-weight:650;color:var(--sub)}
+.platform-app-toolbar .platform-settings{font-size:12px;padding:8px 11px}
+.platform-order-help{max-width:680px;font-size:12px;line-height:1.7;color:var(--sub);margin-bottom:14px}
+.platform-app-tile{min-width:0}
+.app-move-controls{display:flex;justify-content:center;gap:4px;margin-top:4px}
+.app-move-controls button{display:grid;place-items:center;width:30px;height:34px;border:1px solid #d8dfd8;border-radius:8px;background:#fff;color:var(--accent);font-size:17px;cursor:pointer}
+.app-move-controls button:disabled{opacity:.3;cursor:default}
+.app-move-controls button:focus-visible,.platform-app-toolbar button:focus-visible,.app-launch:focus-visible{outline:3px solid #9dbfb0;outline-offset:3px}
 .app-launch{display:flex;flex-direction:column;align-items:center;gap:10px;min-width:0;width:100%;padding:8px 0;border:0;border-radius:12px;background:none;color:var(--ink);font:inherit;cursor:pointer}
 .app-name{display:block;max-width:100%;font-size:13px;font-weight:600;line-height:1.5;text-align:center;overflow-wrap:anywhere}
 .app-icon{display:flex;align-items:center;justify-content:center;flex:none;width:64px;height:64px;border:1px solid #d5e3da;border-radius:19px;color:var(--accent);background:#e4eee8}

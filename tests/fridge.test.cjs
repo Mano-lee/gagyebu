@@ -548,10 +548,34 @@ test('undated notes and timed events save, edit, complete, undo and reload',()=>
   const b=app(a.json('S'));assert.equal(b.run(`S.tasks['${event}'].time`),'14:30');assert.equal(b.run(`S.tasks['${note}'].date`),'2026-11-21');
   b.run(`openTaskSheet('${event}')`);b.el('tkDate').value='';b.run('syncTaskTime();saveTask()');assert.equal(b.run(`S.tasks['${event}'].time`),'');assert.equal(b.run('currentAppRoute.section'),'inbox');
 });
-test('home task alerts exclude completed, undated and future work and open the today page',()=>{
+test('home task alerts exclude completed, undated and distant future work and open the today page',()=>{
   const a=app(),date=a.run('today()'),id=addTask(a,'오늘 일',date);addTask(a,'밀린 일','2020-01-01');addTask(a,'언젠가');addTask(a,'먼 미래','2999-01-01');
   const alerts=a.json('taskPlatformAlerts()');assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('기한 지난 일 1건'));assert.ok(alerts[0].text.includes('오늘 할 일·일정 1건'));
   a.run(`toggleTask('${id}');openPlatform()`);assert.ok(!a.el('view').innerHTML.includes('오늘 할 일·일정 1건'));assert.ok(a.el('view').innerHTML.includes('platformTaskAlert'));
+});
+test('upcoming home alerts include tomorrow through day three across year boundaries and clear stale search on opening',()=>{
+  const a=app();a.context.Date=class extends Date{constructor(...args){super(...(args.length?args:['2026-12-30T12:00:00']))}};
+  const done=addTask(a,'완료한 약속','2027-01-01');a.run(`toggleTask('${done}')`);
+  addTask(a,'내일 약속','2026-12-31');addTask(a,'3일 뒤 약속','2027-01-02');addTask(a,'4일 뒤 약속','2027-01-03');addTask(a,'날짜 없음');
+  const alerts=a.json('taskPlatformAlerts()');assert.equal(alerts.length,1);assert.equal(alerts[0].id,'platformUpcomingTaskAlert');assert.ok(alerts[0].text.includes('3일 이내 예정 일정 2건'));assert.ok(alerts[0].text.includes('12/31 내일 약속'));
+  a.run(`openPlatform();taskQuery='없는 검색';openPlatformAlert('tasks','today')`);assert.equal(a.run('taskQuery'),'');assert.equal(a.run('activeApp'),'tasks');assert.ok(a.el('view').innerHTML.includes('3일 뒤 약속'));
+});
+test('platform app order normalizes unknown and duplicate ids and appends newly registered apps',()=>{
+  const a=app({p:{},appOrder:['tasks','unknown','tasks','ledger',null]});
+  assert.deepEqual(a.json('platformAppIds()'),['tasks','ledger','fridge','recipes']);assert.equal(a.run(`orderedPlatformApps()[0].name`),'할 일·일정');
+  a.run(`S.appOrder='invalid'`);assert.deepEqual(a.json('platformAppIds()'),['ledger','fridge','recipes','tasks']);
+});
+test('reordering apps persists in shared data and rolls back when storage fails',()=>{
+  const a=app();addTask(a);const tasks=a.json('S.tasks');a.run(`openPlatform();togglePlatformEditing();movePlatformApp('tasks',-1)`);
+  assert.deepEqual(a.json('S.appOrder'),['ledger','fridge','tasks','recipes']);assert.deepEqual(a.json('S.tasks'),tasks);
+  const b=app(a.json('S'));assert.deepEqual(b.json('platformAppIds()'),['ledger','fridge','tasks','recipes']);assert.ok(!b.el('view').innerHTML.includes('app-move-controls'));
+  b.run(`togglePlatformEditing()`);const before=b.json('S.appOrder');b.context.localStorage.setItem=()=>{throw Error('full')};b.run(`movePlatformApp('tasks',-1)`);assert.deepEqual(b.json('S.appOrder'),before);
+  b.run(`openApp('tasks')`);assert.equal(b.run('platformEditing'),false);
+});
+test('app order survives backup import and sync alongside task edits',()=>{
+  const a=app(),id=addTask(a),base=a.json('S'),left=clone(base),right=clone(base);left.appOrder=['tasks','ledger','fridge','recipes'];right.tasks[id].notes='다른 기기 메모';
+  a.context.base=base;a.context.left=left;a.context.right=right;const merged=a.json('merge3(JSON.stringify(base),left,right)');assert.deepEqual(merged.appOrder,left.appOrder);assert.equal(merged.tasks[id].notes,'다른 기기 메모');
+  a.context.FileReader=class{readAsText(file){this.result=file;this.onload()}};a.el('imp').files=[JSON.stringify(merged)];a.run(`importData($('imp'))`);assert.equal(a.run('platformAppIds()[0]'),'tasks');
 });
 test('calendar handles leap years, month boundaries and task counts independently of ledger periods',()=>{
   const a=app();addTask(a,'윤일','2024-02-29');a.run(`openApp('tasks','calendar')`);

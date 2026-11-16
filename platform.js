@@ -6,6 +6,7 @@ const PLATFORM_APPS=[
   {id:'tasks',name:'할 일·일정',icon:'<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M7 2v4M17 2v4M3 9h18m-13 6 3 3 5-6"/>',alerts:taskPlatformAlerts}
 ];
 let activeApp='platform',fridgeSection='active',currentAppRoute={id:'platform',section:''};
+let platformEditing=false;
 // history.back()은 비동기다. 닫기 직후 새 창이나 앱을 열면 popstate 이후에 그 이동을 이어간다.
 let sheetHistoryBackPending=false,sheetHistoryNextDialog=null,sheetHistoryNextRoute=null;
 
@@ -13,6 +14,24 @@ function appIcon(app){return `<svg viewBox="0 0 24 24" fill="none" stroke="curre
 function openPlatform(){navigateApp('platform')}
 function openApp(id,section=''){navigateApp(id,section)}
 function openSharedSettings(){navigateApp('settings')}
+function platformAppIds(){
+  const known=PLATFORM_APPS.map(app=>app.id),saved=Array.isArray(S.appOrder)?S.appOrder:[];
+  return [...new Set([...saved.filter(id=>known.includes(id)),...known])];
+}
+function orderedPlatformApps(){return platformAppIds().map(id=>PLATFORM_APPS.find(app=>app.id===id))}
+function togglePlatformEditing(){platformEditing=!platformEditing;render();$('platformEditApps').focus({preventScroll:true})}
+function movePlatformApp(id,direction){
+  if(!platformEditing||![-1,1].includes(direction))return;
+  const order=platformAppIds(),index=order.indexOf(id),next=index+direction;
+  if(index<0||next<0||next>=order.length)return;
+  [order[index],order[next]]=[order[next],order[index]];
+  const previous=S.appOrder;S.appOrder=order;
+  if(!save()){if(previous===undefined)delete S.appOrder;else S.appOrder=previous;return}
+  render();
+  const button=$('move-'+id+'-'+(direction===-1?'before':'after'));
+  (button&&!button.disabled?button:$('move-'+id+'-'+(direction===-1?'after':'before')))?.focus({preventScroll:true});
+}
+function openPlatformAlert(id,section){if(id==='tasks')taskQuery='';openApp(id,section)}
 function navigateApp(id,section=''){
   const route=normalizeAppRoute(id,section);
   if(!closeAppSheet())return;
@@ -120,6 +139,7 @@ function applyAppRoute(route){
   if(!closeAppSheet(false,true))return false;
   currentAppRoute=route;
   activeApp=route.id;
+  if(activeApp!=='platform')platformEditing=false;
   if(activeApp==='recipes'&&['all','favorites'].includes(route.section))recipeListSection=route.section;
   if(activeApp==='ledger')tab=route.section;
   if(activeApp==='fridge'){
@@ -182,9 +202,11 @@ function fridgePlatformAlerts(){
 }
 function platformAlerts(){return PLATFORM_APPS.flatMap(app=>(app.alerts?app.alerts():[]).map(alert=>({...alert,app})))}
 function platformPage(){
-  const alerts=platformAlerts();
-  return `${alerts.length?`<section class="platform-alerts" aria-label="앱 알림"><h1>알림 <span>${alerts.length}</span></h1>${alerts.map(alert=>`<button id="${alert.id}" class="platform-alert" data-app="${alert.app.id}" onclick="openApp('${alert.app.id}','${alert.section}')"><span class="alert-app-icon app-${alert.app.id}" aria-hidden="true">${appIcon(alert.app)}</span><span class="platform-alert-copy"><span class="platform-alert-app">${esc(alert.app.name)}</span><span class="platform-alert-text">${esc(alert.text)}</span></span><span class="platform-alert-arrow" aria-hidden="true">›</span></button>`).join('')}</section>`:''}
-  <section class="platform-apps" aria-label="내 앱">${PLATFORM_APPS.map(app=>`<button id="t-${app.id}" class="app-launch app-${app.id}" onclick="openApp('${app.id}')" aria-label="${esc(app.name)} 열기"><span class="app-icon">${appIcon(app)}</span><span class="app-name">${esc(app.name)}</span></button>`).join('')}</section>`;
+  const alerts=platformAlerts(),apps=orderedPlatformApps();
+  return `${alerts.length?`<section class="platform-alerts" aria-label="앱 알림"><h1>알림 <span>${alerts.length}</span></h1>${alerts.map(alert=>`<button id="${alert.id}" class="platform-alert" data-app="${alert.app.id}" onclick="openPlatformAlert('${alert.app.id}','${alert.section}')"><span class="alert-app-icon app-${alert.app.id}" aria-hidden="true">${appIcon(alert.app)}</span><span class="platform-alert-copy"><span class="platform-alert-app">${esc(alert.app.name)}</span><span class="platform-alert-text">${esc(alert.text)}</span></span><span class="platform-alert-arrow" aria-hidden="true">›</span></button>`).join('')}</section>`:''}
+  <div class="platform-app-toolbar"><h2>내 앱</h2><button id="platformEditApps" class="platform-settings" onclick="togglePlatformEditing()" aria-expanded="${platformEditing}" aria-controls="platformAppGrid">${platformEditing?'편집 완료':'순서 편집'}</button></div>
+  ${platformEditing?'<p class="platform-order-help">화살표로 원하는 위치에 옮기세요. 바꾼 순서는 자동으로 저장돼요.</p>':''}
+  <section id="platformAppGrid" class="platform-apps" aria-label="내 앱">${apps.map((app,index)=>`<div class="platform-app-tile"><button id="t-${app.id}" class="app-launch app-${app.id}" onclick="openApp('${app.id}')" aria-label="${esc(app.name)} 열기"><span class="app-icon">${appIcon(app)}</span><span class="app-name">${esc(app.name)}</span></button>${platformEditing?`<div class="app-move-controls" role="group" aria-label="${esc(app.name)} 위치 변경"><button id="move-${app.id}-before" onclick="movePlatformApp('${app.id}',-1)" aria-label="${esc(app.name)} 앞으로 이동"${index===0?' disabled':''}>←</button><button id="move-${app.id}-after" onclick="movePlatformApp('${app.id}',1)" aria-label="${esc(app.name)} 뒤로 이동"${index===apps.length-1?' disabled':''}>→</button></div>`:''}</div>`).join('')}</section>`;
 }
 
 window.addEventListener('popstate',restoreAppRoute);
