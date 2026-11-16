@@ -34,7 +34,7 @@ body{font-family:system-ui,-apple-system,"Segoe UI","Malgun Gothic","Noto Sans K
 .alert-app-icon svg{width:21px;height:21px}
 .platform-alert-copy{flex:1;min-width:0;line-height:1.6}
 .platform-alert-app{display:block;font-size:11px;color:var(--sub)}
-.platform-alert-text{display:block;font-size:13px;overflow-wrap:anywhere}
+.platform-alert-text{display:block;font-size:13px;overflow-wrap:anywhere;white-space:pre-line}
 .platform-alert-arrow{flex:none;color:var(--sub);font-size:21px}
 .platform-backbar{display:flex;align-items:center;justify-content:space-between;padding:12px 18px 0;background:var(--accent);color:#fff}
 .platform-backbar button{border:1px solid #ffffff40;background:#ffffff0d;color:#fff;font:inherit;font-size:12px;border-radius:8px;padding:8px 10px;cursor:pointer}

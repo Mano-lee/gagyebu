@@ -20,7 +20,7 @@ function taskPlatformAlerts(){
   const pending=taskItems().filter(t=>!t.done&&t.date),items=pending.filter(t=>t.date<=today()),late=items.filter(t=>t.date<today()).length,current=items.length-late,alerts=[];
   if(items.length)alerts.push({id:'platformTaskAlert',section:'today',text:[late?`기한 지난 일 ${late}건`:'',current?`오늘 할 일·일정 ${current}건`:''].filter(Boolean).join(' · ')});
   const upcoming=pending.filter(t=>{const days=foodDays(t.date);return days!==null&&days>=1&&days<=3}).sort(taskSort);
-  if(upcoming.length){const first=upcoming[0];alerts.push({id:'platformUpcomingTaskAlert',section:'today',text:`3일 이내 예정 일정 ${upcoming.length}건 · ${first.date.slice(5).replace('-','/')} ${first.title.slice(0,60)}`})}
+  if(upcoming.length){const first=upcoming[0];alerts.push({id:'platformUpcomingTaskAlert',section:'today',text:`3일 이내 예정 일정 ${upcoming.length}건\n${first.date.slice(5).replace('-','/')} ${first.title.slice(0,60)}`})}
   return alerts;
 }
 function taskRow(item){
