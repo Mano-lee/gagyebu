@@ -314,13 +314,16 @@ nav button.on{color:var(--accent);font-weight:700}
     <form onsubmit="event.preventDefault();saveRecipe()">
       <label for="rc-title">레시피 제목 <span aria-hidden="true">*</span></label><input id="rc-title" class="recipe-title-input" required maxlength="160" placeholder="예: 주말에 다시 만들 김치볶음밥">
       <label for="rc-category">분류</label><input id="rc-category" list="rcCategoryOptions" maxlength="40" placeholder="예: 한식, 칵테일, 나만의 요리" aria-describedby="rcCategoryHelp"><datalist id="rcCategoryOptions"></datalist><p id="rcCategoryHelp" class="recipe-form-help">추천 분류를 고르거나 원하는 이름을 직접 입력하세요. 비워 두면 미분류로 보관해요.</p>
-      <div class="recipe-form-row"><div><label for="rc-source">출처 이름</label><input id="rc-source" maxlength="200" placeholder="예: 요리 채널, 책, 엄마"></div><div><label for="rc-url">출처 링크</label><input id="rc-url" type="url" inputmode="url" placeholder="https://…"></div></div>
+      <div class="recipe-form-row"><div><label for="rc-servings">인분·잔 수</label><input id="rc-servings" maxlength="200" placeholder="예: 2인분, 1잔, 확인 필요"></div><div><label for="rc-duration">조리 시간</label><input id="rc-duration" maxlength="300" placeholder="예: 20분, 재우기 하루 별도"></div></div>
+      <div class="recipe-form-row"><div><label for="rc-source">출처 이름</label><input id="rc-source" maxlength="1200" placeholder="예: 요리 채널, 책, 엄마"></div><div><label for="rc-url">출처 링크</label><input id="rc-url" type="url" inputmode="url" placeholder="https://…"></div></div>
+      <details class="recipe-paste"><summary>추가 출처 링크</summary><label for="rc-references">참고한 주소를 한 줄에 하나씩</label><textarea id="rc-references" rows="3" placeholder="https://…&#10;https://…"></textarea></details>
       <details id="rcPaste" class="recipe-paste"><summary>복사한 레시피 글 붙여넣기</summary><label for="rc-original">가져온 원문</label><textarea id="rc-original" rows="7" placeholder="복사한 글을 그대로 붙여넣으세요. 원문도 함께 보관해요."></textarea><button type="button" class="btn ghost" onclick="splitRecipeText()">재료·조리 순서로 나누기</button><p class="recipe-form-help">‘재료’, ‘만드는 법’ 같은 제목이 있는 글을 나눠요. 링크의 본문이나 사진 속 글을 자동으로 가져오지는 않아요.</p></details>
       <div class="recipe-photo-label"><label for="rcImages">레시피 사진</label><span id="rcImageCount">0/4장</span></div><input id="rcImages" type="file" accept="image/*" multiple onchange="addRecipeImages(this)" aria-describedby="rcImageHelp"><p id="rcImageHelp" class="recipe-form-help">사진·스크린샷을 4장까지 첨부해요. 저장 공간을 위해 크기를 줄여 보관하며 백업에도 포함돼요.</p><div id="rcImagePreview" class="recipe-image-preview"></div>
       <label for="rc-ingredients">재료 <span class="recipe-form-help">한 줄에 하나씩</span></label><textarea id="rc-ingredients" rows="5" placeholder="밥 1공기&#10;김치 100g&#10;계란 1개"></textarea>
       <label for="rc-steps">만드는 순서 <span class="recipe-form-help">한 줄에 한 단계씩</span></label><textarea id="rc-steps" rows="6" placeholder="팬에 기름을 두르고 김치를 볶아요.&#10;밥을 넣고 함께 볶아요."></textarea>
       <label for="rc-tags">태그</label><input id="rc-tags" maxlength="300" placeholder="예: 한식, 간단 요리, 도시락"><p class="recipe-form-help">쉼표로 구분하면 나중에 모아볼 수 있어요.</p>
       <label for="rc-notes">나만의 메모</label><textarea id="rc-notes" rows="3" placeholder="다음에는 설탕을 조금 줄이기, 2인분 기준 등"></textarea>
+      <label class="recipe-review-filter"><input id="rcReviewNeeded" type="checkbox">계량·조리법 등 확인할 내용이 있어요</label><p class="recipe-form-help">분량이나 단위가 불명확하거나 원문과 보충 설명이 다를 때 표시해 두세요. 확인이 끝나면 해제할 수 있어요.</p>
       <p id="rcNotice" role="status" aria-live="polite"></p>
       <button id="rcSave" class="btn" type="submit">레시피 저장</button><button id="rcDelete" class="btn danger" type="button" onclick="deleteRecipe()" hidden>레시피 삭제</button>
     </form>
@@ -344,6 +347,7 @@ nav button.on{color:var(--accent);font-weight:700}
   </section>
 </div>
 <script src="tasks.js"></script>
+<script src="recipe-collection.js"></script>
 <script src="recipes.js"></script>
 <script src="fridge.js"></script>
 <script src="platform.js"></script>
@@ -376,7 +380,7 @@ const order=d=>d>=START_DAY?d-START_DAY:d+31;
 // ---- 저장 ----
 let tab='home',fType='out',fCat=OUT_CATS[0],editId=null,editFx=null,selDay=null,selCat=null;
 let S=load(); START_DAY=dayOf(S); S.cur=periodOf(today());
-function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.p)return prepareFoodData(s)}catch(e){}return prepareFoodData({p:{}})}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.p)return addDocumentRecipes(prepareFoodData(s))}catch(e){}return addDocumentRecipes(prepareFoodData({p:{}}))}
 // 시작일이 저장돼 있지 않은 예전 기록은 기간 이름(예: 2026-10-21)에서 읽어옴
 function dayOf(s){const k=Object.keys(s.p)[0];return s.day||(k?Number(k.slice(8)):1)}
 function save(){S.schemaVersion=5;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장에 실패했어요. 저장 공간을 확인하고 백업을 먼저 받아두세요.');return false}
@@ -739,12 +743,12 @@ function exportData(){const b=new Blob([JSON.stringify(S)],{type:'application/js
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='가계부백업_'+today()+'.json';a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{const d=prepareFoodData(JSON.parse(r.result));
+  r.onload=()=>{try{const d=markRecipeCollection(prepareFoodData(JSON.parse(r.result)));
     if(confirm('지금 가계부·냉장고·레시피·할 일·일정 기록을 백업 내용으로 바꿀까요?\n레시피나 할 일·일정이 없는 예전 백업을 불러오면 해당 기록도 지워져요.')){
       const previous=S,previousDay=START_DAY;S=d;START_DAY=dayOf(S);S.cur=periodOf(today());
       if(!save()){S=previous;START_DAY=previousDay;return}lastFoodUse=null;openPlatform()}}
     catch(e){alert('올바른 백업 파일이 아니에요')}};r.readAsText(f);inp.value=''}
-function resetAll(){if(confirm('정말 가계부·냉장고·레시피·할 일·일정의 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S=prepareFoodData({cur:periodOf(today()),day:START_DAY,p:{}});lastFoodUse=null;save();openPlatform()}}
+function resetAll(){if(confirm('정말 가계부·냉장고·레시피·할 일·일정의 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S=markRecipeCollection(prepareFoodData({cur:periodOf(today()),day:START_DAY,p:{}}));lastFoodUse=null;save();openPlatform()}}
 
 // ---- 구글 시트 동기화 ----
 const SKEY='my-gagyebu-sync';
@@ -773,13 +777,13 @@ function syncInfo(){return syncState==='err'?'지금은 연결이 안 돼서 이
 function stamp(){const d=new Date();SY.at=`${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;saveSY();setSync('ok')}
 // 보내는 중에 앱을 닫아도 끝까지 전송되도록 keepalive 사용 (브라우저 제한 64KB 이하일 때만)
 async function api(body){const str=body&&JSON.stringify({key:SY.key,clientSchema:5,...body});
-  const r=body?await fetch(SY.url,{method:'POST',body:str,keepalive:str.length<60000})
+  const r=body?await fetch(SY.url,{method:'POST',body:str,keepalive:new Blob([str]).size<60000})
     :await fetch(SY.url+'?key='+encodeURIComponent(SY.key)+'&clientSchema=5');
   const j=await r.json();if(j.error)throw new Error(j.error);return j}
-function adopt(j){const c=S.cur,d0=START_DAY,next=prepareFoodData(j.data&&j.data.p?j.data:{p:{}}),nextDay=dayOf(next);
+function adopt(j){const c=S.cur,d0=START_DAY,raw=prepareFoodData(j.data&&j.data.p?j.data:{p:{}}),next=addDocumentRecipes(raw),imported=next!==raw,nextDay=dayOf(next);recipeCollectionPending=false;
   START_DAY=nextDay;next.cur=START_DAY===d0?c:periodOf(today());
   try{localStorage.setItem(KEY,JSON.stringify(next))}catch(e){START_DAY=d0;setSync('err');alert('불러온 기록을 이 기기에 저장하지 못했어요. 기존 기록은 유지했어요. 저장 공간을 확인해 주세요.');return false}
-  S=next;SY.ver=j.ver;SY.dirty=false;SY.sent=[];if(j.data)setBase(JSON.stringify(j.data));stamp();render();return true}
+  S=next;SY.ver=j.ver;SY.dirty=false;SY.sent=[];if(j.data)setBase(JSON.stringify(j.data));stamp();render();if(imported)save();return true}
 
 // now: 앱을 닫는 순간처럼 기다릴 수 없을 때는 보내는 중이어도 바로 한 번 더 보냄
 async function push(force,now){
@@ -865,6 +869,7 @@ function syncCard(){
   <button class="btn danger" onclick="disconnect()">연결 해제 (이 기기만)</button></div>`}
 
 restoreAppRoute();
+if(recipeCollectionPending){recipeCollectionPending=false;save()}
 if(syncOn()){setSync('');pull()}
 // 앱을 내리거나 닫으면 기다리던 전송을 바로 보냄 (보내는 중이어도 한 번 더)
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){pull();if(activeApp==='tasks'||activeApp==='platform')render()}else if(SY.dirty){clearTimeout(pushTimer);push(false,true)}});

@@ -12,7 +12,7 @@ const browserPath=process.env.BROWSER_PATH||[
   '/usr/bin/google-chrome','/usr/bin/chromium'
 ].find(p=>fs.existsSync(p));
 if(!browserPath)throw new Error('Set BROWSER_PATH to an installed Chromium browser.');
-const allowed=new Set(['index.html','fridge.js','fridge.css','platform.js','platform.css','recipes.js','recipes.css','tasks.js','tasks.css','sw.js','manifest.webmanifest','icon-192.png','icon-512.png','app-icon.svg','app-icon-192.png','app-icon-512.png','apple-touch-icon.png','favicon-32.png']);
+const allowed=new Set(['index.html','fridge.js','fridge.css','platform.js','platform.css','recipes.js','recipes.css','recipe-collection.js','tasks.js','tasks.css','sw.js','manifest.webmanifest','icon-192.png','icon-512.png','app-icon.svg','app-icon-192.png','app-icon-512.png','apple-touch-icon.png','favicon-32.png']);
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webmanifest':'application/manifest+json','.png':'image/png','.svg':'image/svg+xml'};
 const server=http.createServer((req,res)=>{
   const name=new URL(req.url,'http://localhost').pathname.slice(1)||'index.html';
@@ -295,6 +295,28 @@ let browser,socket,profile;
   assert.equal(await evaluate('document.getElementById("sStart")===null'),true);
   await evaluate('window.history.back()');await waitFor(()=>evaluate('activeApp==="platform"'),'browser back to platform');
   await evaluate('window.history.forward()');await waitFor(()=>evaluate('activeApp==="settings"'),'browser forward to settings');
+  console.log('Checking imported document recipes, review markers, servings and multiple sources.');
+  await evaluate(`openApp('recipes')`);assert.equal(await evaluate('recipeItems().length'),29);
+  assert.equal(await evaluate(`recipeItems().filter(item=>item.category==='칵테일').length`),22);
+  await send('Page.reload');await waitFor(ready,'document collection persists after reload');assert.equal(await evaluate('recipeItems().length'),29);
+  await evaluate('window.__alerts=[];window.alert=m=>__alerts.push(m);window.confirm=()=>true');
+  await evaluate(`openApp('recipes','doc_20261116_02')`);assert.equal(await evaluate(`document.querySelectorAll('.recipe-source-link').length`),3);
+  assert.equal(await evaluate(`document.querySelector('.recipe-facts').textContent.includes('30분 이내')`),true);
+  assert.equal(await evaluate(`!!document.querySelector('.recipe-review-notice')`),true);
+  for(const [width,height,name] of [[360,800,'mobile'],[1280,900,'desktop']]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<960});
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),`Document recipe detail overflow at ${width}px`);
+    const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(out,'document-recipe-'+name+'.png'),Buffer.from(shot.data,'base64'));
+  }
+  await evaluate(`openRecipeSheet('doc_20261116_02');$('rcReviewNeeded').checked=false;$('rcSave').click()`);await waitFor(()=>evaluate('!sheetHistoryBackPending'),'review resolved');
+  await evaluate(`openApp('recipes');$('recipeReviewOnly').click()`);assert.equal(await evaluate('recipeResults().length'),28);
+  await evaluate(`recipeReviewOnly=false;openRecipeSheet('doc_20261116_29');deleteRecipe()`);await waitFor(()=>evaluate('!sheetHistoryBackPending'),'document recipe deleted');
+  await send('Page.reload');await waitFor(ready,'deleted document recipe stays deleted');assert.equal(await evaluate('recipeItems().length'),28);
+  await evaluate('window.__alerts=[];window.alert=m=>__alerts.push(m);window.confirm=()=>true');
+  assert.equal(await evaluate('S.recipes.doc_20261116_29===undefined'),true);
+  // Keep the following app regression flows synthetic and isolated from bundled records.
+  await evaluate(`S.recipes={};save();openPlatform()`);
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   console.log('Checking recipes with pasted text, photos, favorites, native Back and shared backup.');
   await evaluate(`openPlatform();$('t-recipes').click();$('addRecord').click();$('rc-title').value='김치볶음밥';$('rc-source').value='테스트 요리 노트';$('rc-url').value='https://example.com/recipe';$('rc-tags').value='한식, 간단 요리';$('rc-original').value='김치볶음밥\\n[재료]\\n김치 100g\\n밥 1공기\\n[만드는 법]\\n1. 김치를 볶아요.\\n2. 밥을 넣어요.';splitRecipeText()`);
   assert.equal(await evaluate(`$('rc-ingredients').value`),'김치 100g\n밥 1공기');

@@ -11,7 +11,7 @@ const fridge=fs.readFileSync(path.join(root,'fridge.js'),'utf8');
 const platform=fs.readFileSync(path.join(root,'platform.js'),'utf8');
 const recipes=fs.readFileSync(path.join(root,'recipes.js'),'utf8');
 const clone=x=>JSON.parse(JSON.stringify(x));
-function app(initial){
+function app(initial,includeCollection=false){
   const elements=new Map(),memory=new Map(),alerts=[];
   const element=id=>{
     if(!elements.has(id)){
@@ -31,6 +31,7 @@ function app(initial){
     back(){this.go(-1)},forward(){this.go(1)}
   };
   const context=vm.createContext({console,Date,crypto:webcrypto,Blob,URL,setTimeout(){},clearTimeout(){},alert:m=>alerts.push(m),confirm:()=>true,navigator:{},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},document:{body:element('body'),getElementById:element,addEventListener(){},querySelectorAll:selector=>selector==='#fFoodW input'?checks:selector==='#fFoodW input:checked'?checks.filter(c=>c.checked):[]},window:{location,history,matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(type,listener){if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(listener)}}});
+  if(includeCollection)vm.runInContext(fs.readFileSync(path.join(root,'recipe-collection.js'),'utf8'),context,{filename:'recipe-collection.js'});
   vm.runInContext(fs.readFileSync(path.join(root,'tasks.js'),'utf8'),context,{filename:'tasks.js'});
   vm.runInContext(recipes,context,{filename:'recipes.js'});
   vm.runInContext(fridge,context,{filename:'fridge.js'});
@@ -587,4 +588,50 @@ test('task backup import round trips and legacy backup explicitly replaces all a
   const a=app(),id=addTask(a),saved=JSON.stringify(a.json('S'));a.context.FileReader=class{readAsText(file){this.result=file;this.onload()}};
   a.run('S.tasks={}');a.el('imp').files=[saved];a.run(`importData($('imp'))`);assert.equal(a.run(`S.tasks['${id}'].title`),'병원 예약');
   a.el('imp').files=[JSON.stringify({p:{}})];a.run(`importData($('imp'))`);assert.deepEqual(a.json('S.tasks'),{});
+});
+
+test('document collection adds 29 complete recipes once and preserves source uncertainty and variants',()=>{
+  const a=app(undefined,true);assert.equal(a.run('recipeItems().length'),29);
+  assert.equal(a.run(`recipeItems().filter(item=>item.category==='한식').length`),7);assert.equal(a.run(`recipeItems().filter(item=>item.category==='칵테일').length`),22);
+  assert.equal(a.json('S.recipes.doc_20261116_07.steps').split('\n').length,7);
+  assert.equal(a.run(`recipeSourceURLs(S.recipes.doc_20261116_02).length`),3);
+  assert.equal(a.run(`S.recipes.doc_20261116_27.ingredients.includes('진 — 1')`),true);
+  assert.equal(a.run(`S.recipes.doc_20261116_10.steps`),'확인 필요 (원문에 만드는 법 없음)');
+  assert.equal(a.run(`recipeItems().filter(item=>item.title.startsWith('코스모폴리탄')).length`),3);
+  const b=app(a.json('S'),true);assert.equal(b.run('recipeItems().length'),29);assert.equal(b.run('recipeCollectionPending'),false);
+});
+test('document collection never overwrites same-title recipes or restores edited and deleted records',()=>{
+  const initial={p:{},recipes:{mine:{id:'mine',title:'제육볶음 양념',notes:'내가 고친 양념'}}},a=app(initial,true);
+  assert.equal(a.run('recipeItems().length'),29);assert.equal(a.run(`S.recipes.mine.notes`),'내가 고친 양념');assert.equal(a.run('S.recipes.doc_20261116_01'),undefined);
+  a.run(`S.recipes.doc_20261116_02.title='내 볶음김치';delete S.recipes.doc_20261116_03;save()`);
+  const b=app(a.json('S'),true);assert.equal(b.run('recipeItems().length'),28);assert.equal(b.run(`S.recipes.doc_20261116_02.title`),'내 볶음김치');assert.equal(b.run('S.recipes.doc_20261116_03'),undefined);
+});
+test('legacy backup restore and reset stay empty after reload instead of reimporting the collection',()=>{
+  const a=app(undefined,true);a.context.FileReader=class{readAsText(file){this.result=file;this.onload()}};a.el('imp').files=[JSON.stringify({p:{}})];a.run(`importData($('imp'))`);
+  assert.equal(app(a.json('S'),true).run('recipeItems().length'),0);
+  const b=app(undefined,true);b.run('resetAll()');assert.equal(app(b.json('S'),true).run('recipeItems().length'),0);
+});
+test('structured pasted recipes fill metadata and all sources without inventing absent links or changing units',()=>{
+  const a=app();a.run('openRecipeSheet()');a.el('rc-original').value='레시피 제목: 칵테일 예시\n분류: 칵테일\n인분: 1잔\n조리 시간: 확인 필요\n출처 링크: example.com/a, https://example.org/b\n메모: 원래 단위 확인 필요\n[재료]\n진 — 1 (단위 확인 필요)\n[만드는 법]\n확인 필요';a.run('splitRecipeText();saveRecipe()');
+  const r=a.json('recipeItems()[0]');assert.equal(r.servings,'1잔');assert.equal(r.duration,'확인 필요');assert.equal(r.category,'칵테일');assert.equal(r.reviewNeeded,true);assert.equal(r.ingredients,'진 — 1 (단위 확인 필요)');assert.equal(r.url,'https://example.com/a');assert.equal(r.references,'https://example.org/b');
+  a.run('openRecipeSheet()');a.el('rc-original').value='레시피 제목: 출처 없는 요리\n출처 링크: 없음 (첨부 파일)\n[재료]\n밥';a.run('splitRecipeText()');assert.equal(a.el('rc-url').value,'');
+});
+test('review status, servings and references survive sync and drafts reject unsafe extra source links',()=>{
+  const a=app(),id=addRecipe(a);a.run(`openRecipeSheet('${id}')`);a.el('rc-servings').value='2인분';a.el('rc-duration').value='30분';a.el('rc-references').value='javascript:alert(1)';a.run('saveRecipe()');assert.equal(a.run(`S.recipes['${id}'].servings`),'');
+  a.el('rc-references').value='https://example.org/reference';a.el('rcReviewNeeded').checked=true;a.run('saveRecipe()');
+  const b=app(a.json('S'));b.run(`recipeReviewOnly=true`);assert.equal(b.run('recipeResults().length'),1);b.run(`openRecipeSheet('${id}')`);assert.equal(b.el('rcReviewNeeded').checked,true);assert.equal(b.el('rc-servings').value,'2인분');
+  b.el('rcReviewNeeded').checked=false;b.context.confirm=()=>false;b.run('window.history.back()');assert.equal(b.el('recipeSheet').classList.contains('show'),true);
+  const base=a.json('S'),left=clone(base),right=clone(base);left.recipes[id].reviewNeeded=false;right.recipes[id].duration='40분';a.context.base=base;a.context.left=left;a.context.right=right;
+  const merged=a.json('merge3(JSON.stringify(base),left,right)');assert.equal(merged.recipes[id].reviewNeeded,false);assert.equal(merged.recipes[id].duration,'40분');
+  assert.throws(()=>a.run(`prepareRecipeData({recipes:{x:{id:'x',title:'x',references:'data:text/html,bad'}}})`));
+});
+test('large Korean recipe sync uses UTF-8 byte length for the browser keepalive limit',async()=>{
+  const a=app();let request;a.context.fetch=async (_url,options)=>{request=options;return {json:async()=>({ok:true})}};
+  await a.run(`SY={url:'https://example.com',key:'test'};api({data:{text:'한'.repeat(25000)}})`);assert.equal(request.keepalive,false);
+  await a.run(`api({data:{text:'작은 기록'}})`);assert.equal(request.keepalive,true);
+});
+test('adopting older synced records imports the document collection without duplicating it or losing user data',()=>{
+  const a=app(undefined,true);a.context.remote={ver:8,data:{p:{},recipes:{mine:{id:'mine',title:'제육볶음 양념',notes:'시트에서 바꾼 내용'}}}};
+  a.run('adopt(remote)');assert.equal(a.run('recipeItems().length'),29);assert.equal(a.run('S.recipes.mine.notes'),'시트에서 바꾼 내용');assert.equal(a.run('S.recipes.doc_20261116_01'),undefined);
+  assert.equal(app(a.json('S'),true).run('recipeItems().length'),29);
 });
