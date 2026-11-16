@@ -134,6 +134,7 @@ function applyAppRoute(route){
 function updatePlatformShell(){
   const ledger=activeApp==='ledger',fridge=activeApp==='fridge',recipes=activeApp==='recipes',tasks=activeApp==='tasks',hub=!ledger&&!fridge&&!recipes&&!tasks;
   document.body.classList.toggle('platform-mode',hub);
+  document.body.classList.toggle('task-today-mode',tasks&&currentAppRoute.section==='today');
   $('appShell').hidden=hub;
   $('platformHeader').hidden=!hub;
   $('ledgerHeader').hidden=!ledger;

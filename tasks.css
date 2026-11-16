@@ -31,6 +31,21 @@
 .task-day small{font-size:10px;color:#716c96}.task-day.is-today>span{font-weight:800;text-decoration:underline;text-underline-offset:4px}
 .task-day.selected{background:#eeedf5;border-color:#a8a2c7}.task-day.selected small{color:#66618a}.task-day:hover{border-color:#c9c4da}
 .task-calendar-help,.task-footnote{font-size:11px;color:#7d8781;line-height:1.8;margin-top:18px}
+.task-today-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,330px);gap:18px;align-items:start}
+.task-today-primary,.task-outlook{min-width:0}
+.task-mini-calendar{padding:12px;margin-bottom:16px}
+.task-mini-heading{font-size:12px;color:#716c96;margin-bottom:8px;font-weight:600}
+.task-mini-calendar .task-month{gap:6px;margin-bottom:8px}
+.task-mini-calendar .task-month h2{font-size:15px}
+.task-mini-calendar .task-month button{padding:2px 8px;min-height:30px}
+.task-mini-calendar .task-month .task-today-button{font-size:11px;padding:6px 8px}
+.task-mini-calendar .task-week,.task-mini-calendar .task-days{gap:2px}
+.task-mini-calendar .task-week{margin-bottom:6px}
+.task-mini-calendar .task-day{min-height:34px;font-size:12px;gap:1px;border-radius:8px}
+.task-mini-calendar .task-day small{font-size:9px;line-height:12px}
+.task-mini-calendar .task-day.has-tasks{background:#f3f1f8;font-weight:600}
+.task-mini-calendar .task-day.selected{background:#e7e3f3;border-color:#a8a2c7}
+.task-mini-calendar .task-calendar-help{margin-top:8px;font-size:10px;line-height:1.4}
 .task-inline-add{margin-top:0;font-size:13px}
 .task-form .food-form-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .task-form label{display:block;font-size:13px;color:#44594c;margin:18px 0 7px}
@@ -41,4 +56,6 @@
 #tkNotice{color:#9b492d;font-size:13px;line-height:1.8;margin-top:14px}
 .task-app button:focus-visible,.task-form button:focus-visible{outline:3px solid #a8a2c7;outline-offset:3px}
 @media(max-width:650px){.task-calendar-layout{grid-template-columns:minmax(0,1fr)}.task-heading h1{font-size:23px}.task-calendar{padding:14px 10px}.task-group{padding:16px}.task-day{min-height:52px}.task-week,.task-days{gap:2px}.task-month h2{font-size:16px}}
+@media(max-width:1150px){.task-today-layout{grid-template-columns:minmax(0,1fr);gap:0}.task-today-primary,.task-outlook{display:contents}.task-today-primary>.task-group:first-child{order:0}.task-mini-calendar{order:1}.task-today-primary>.task-group:last-child{order:2}.task-outlook>.task-group{order:3}}
+@media(max-width:959px){.task-today-mode #taskHeader{padding-top:6px;padding-bottom:10px}.task-today-mode #taskHeader .fridge-side-help,.task-today-mode .task-eyebrow{display:none}.task-today-mode .task-heading{margin-bottom:14px}.task-today-mode .task-search{margin-bottom:16px}.task-today-mode .task-heading .muted{font-size:12px}}
 @media(min-width:960px){.task-app{padding:10px 12px 40px}.task-form.panel{width:600px}#taskHeader{padding-top:24px;padding-bottom:12px}}
