@@ -27,7 +27,7 @@ async function verify(){
   const pagesRun=runs?.workflow_runs?.find(r=>r.head_sha===sha&&/pages/i.test(r.name));
   if(pagesRun&&pagesRun.status==='completed'&&pagesRun.conclusion!=='success')throw new Error('GitHub Pages workflow failed: '+pagesRun.html_url);
   if(build?.commit===sha&&build.status==='errored')throw new Error('GitHub Pages build failed: '+(build.error?.message||'unknown error'));
-  const assets=['index.html','platform.js','platform.css','fridge.js','fridge.css','recipes.js','recipes.css','sw.js','manifest.webmanifest','app-icon.svg','app-icon-192.png','app-icon-512.png','apple-touch-icon.png','favicon-32.png'];
+  const assets=['index.html','platform.js','platform.css','fridge.js','fridge.css','recipes.js','recipes.css','tasks.js','tasks.css','sw.js','manifest.webmanifest','app-icon.svg','app-icon-192.png','app-icon-512.png','apple-touch-icon.png','favicon-32.png'];
   const checks=await Promise.all(assets.map(async name=>{
     const response=await fetch(site+(name==='index.html'?'':name)+'?deploy='+sha+'&t='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(20000)});
     if(!response.ok)return {name,ok:false,status:response.status};

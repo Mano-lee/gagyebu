@@ -2,7 +2,8 @@
 const PLATFORM_APPS=[
   {id:'ledger',name:'가계부',icon:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M15 13h6M6 5V3h12"/>',alerts:ledgerPlatformAlerts},
   {id:'fridge',name:'냉장고',icon:'<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M5 10h14M8 6v1M8 14v3"/>',alerts:fridgePlatformAlerts},
-  {id:'recipes',name:'레시피',icon:'<path d="M4 3h12a3 3 0 0 1 3 3v15H6a3 3 0 0 1-3-3V4a1 1 0 0 1 1-1ZM3 17h16M8 7h6M8 11h4"/>'}
+  {id:'recipes',name:'레시피',icon:'<path d="M4 3h12a3 3 0 0 1 3 3v15H6a3 3 0 0 1-3-3V4a1 1 0 0 1 1-1ZM3 17h16M8 7h6M8 11h4"/>'},
+  {id:'tasks',name:'할 일·일정',icon:'<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M7 2v4M17 2v4M3 9h18m-13 6 3 3 5-6"/>',alerts:taskPlatformAlerts}
 ];
 let activeApp='platform',fridgeSection='active',currentAppRoute={id:'platform',section:''};
 // history.back()은 비동기다. 닫기 직후 새 창이나 앱을 열면 popstate 이후에 그 이동을 이어간다.
@@ -24,12 +25,14 @@ function commitAppRoute(route){
   if(window.location.hash!==hash)window.history.pushState(null,'',hash);
 }
 function normalizeAppRoute(id,section=''){
+  if(id==='tasks')return {id,section:['today','calendar','inbox','done'].includes(section)?section:'today'};
   if(id==='ledger')return {id,section:['home','list','set'].includes(section)?section:'home'};
   if(id==='fridge')return {id,section:['active','pending','history','soon'].includes(section)?section:'active'};
   if(id==='recipes')return {id,section:section==='favorites'||/^[a-zA-Z0-9_-]+$/.test(section)&&Object.hasOwn(S.recipes||{},section)?section:'all'};
   return {id:id==='settings'?'settings':'platform',section:''};
 }
 function currentAppSheet(){
+  if($('taskSheet').classList.contains('show'))return {kind:'task',id:taskEditId,date:$('tkDate').value};
   if($('recipeSheet').classList.contains('show'))return {kind:'recipe',id:recipeEditId};
   if($('foodSheet').classList.contains('show'))return {kind:'food',id:foodEditId,taskId:foodTaskId};
   if($('sheet').classList.contains('show'))return {kind:'transaction',id:editId,planId:fromPlan,period:S.cur};
@@ -39,6 +42,7 @@ function currentAppSheet(){
 function closeAppSheet(force=false,fromHistory=false){
   const dialog=currentAppSheet();
   if(!dialog)return true;
+  if(dialog.kind==='task')return closeTaskSheet(force,fromHistory);
   if(dialog.kind==='recipe')return closeRecipeSheet(force,fromHistory);
   if(dialog.kind==='food')return closeFoodSheet(force,fromHistory);
   if(dialog.kind==='transaction')return closeSheet(force,fromHistory);
@@ -60,6 +64,10 @@ function leaveAppSheetHistory(){
   if(appSheetFromState(window.history.state)&&!sheetHistoryBackPending){sheetHistoryBackPending=true;window.history.back()}
 }
 function restoreAppSheetHistory(dialog){
+  if(dialog.kind==='task'){
+    if(dialog.id&&!Object.hasOwn(S.tasks||{},dialog.id)){leaveAppSheetHistory();return}
+    openTaskSheet(dialog.id||null,dialog.date||'');return;
+  }
   if(dialog.kind==='recipe'){
     if(dialog.id&&!Object.hasOwn(S.recipes||{},dialog.id)){leaveAppSheetHistory();return}
     openRecipeSheet(dialog.id||null);return;
@@ -124,16 +132,23 @@ function applyAppRoute(route){
   return true;
 }
 function updatePlatformShell(){
-  const ledger=activeApp==='ledger',fridge=activeApp==='fridge',recipes=activeApp==='recipes',hub=!ledger&&!fridge&&!recipes;
+  const ledger=activeApp==='ledger',fridge=activeApp==='fridge',recipes=activeApp==='recipes',tasks=activeApp==='tasks',hub=!ledger&&!fridge&&!recipes&&!tasks;
   document.body.classList.toggle('platform-mode',hub);
   $('appShell').hidden=hub;
   $('platformHeader').hidden=!hub;
   $('ledgerHeader').hidden=!ledger;
   $('fridgeHeader').hidden=!fridge;
   $('recipeHeader').hidden=!recipes;
+  $('taskHeader').hidden=!tasks;
   $('ledgerNav').hidden=!ledger;
   $('fridgeNav').hidden=!fridge;
   $('recipeNav').hidden=!recipes;
+  $('taskNav').hidden=!tasks;
+  ['today','calendar','inbox','done'].forEach(id=>{
+    const selected=tasks&&currentAppRoute.section===id;
+    $('tk-'+id).classList.toggle('on',selected);
+    $('tk-'+id).setAttribute('aria-current',selected?'page':'false');
+  });
   $('sharedSettingsButton').hidden=activeApp==='settings';
   $('platformHomeButton').hidden=activeApp!=='settings';
   const label=PLATFORM_APPS.find(app=>app.id===activeApp)?.name||'';

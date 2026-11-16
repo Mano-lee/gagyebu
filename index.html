@@ -175,6 +175,7 @@ nav button.on{color:var(--accent);font-weight:700}
 </style>
 <link rel="stylesheet" href="platform.css">
 <link rel="stylesheet" href="recipes.css">
+<link rel="stylesheet" href="tasks.css">
 </head>
 <body class="platform-mode">
 <header id="platformHeader" class="platform-top">
@@ -196,8 +197,9 @@ nav button.on{color:var(--accent);font-weight:700}
 </header>
 <header id="fridgeHeader" hidden><h2 class="fridge-side-title">냉장고</h2><p class="fridge-side-help">구매한 식재료부터 소비 기록까지,<br>우리 집 먹거리를 관리해요.</p></header>
 <header id="recipeHeader" hidden><h2 class="fridge-side-title">레시피</h2><p class="fridge-side-help">다시 만들고 싶은 요리,<br>나만의 레시피 보관함에 담아요.</p></header>
+<header id="taskHeader" hidden><h2 class="fridge-side-title">할 일·일정</h2><p class="fridge-side-help">잊고 싶지 않은 작은 일부터,<br>소중한 약속까지 챙겨요.</p></header>
 <div class="sy app-sync" id="syncSt"></div>
-<button id="addRecord" class="fab" onclick="activeApp==='recipes'?openRecipeSheet():activeApp==='fridge'?openFoodSheet():openSheet()" aria-label="기록 추가">+<span class="fabt"> 기록 추가</span></button>
+<button id="addRecord" class="fab" onclick="activeApp==='tasks'?openTaskSheet():activeApp==='recipes'?openRecipeSheet():activeApp==='fridge'?openFoodSheet():openSheet()" aria-label="기록 추가">+<span class="fabt"> 기록 추가</span></button>
 <nav id="ledgerNav" aria-label="가계부 메뉴">
   <button id="t-home" onclick="go('home')">요약</button>
   <button id="t-list" onclick="go('list')">내역</button>
@@ -211,6 +213,12 @@ nav button.on{color:var(--accent);font-weight:700}
 <nav id="recipeNav" aria-label="레시피 메뉴" hidden>
   <button id="r-all" onclick="openApp('recipes')">모든 레시피</button>
   <button id="r-favorites" onclick="openApp('recipes','favorites')">즐겨찾기</button>
+</nav>
+<nav id="taskNav" aria-label="할 일·일정 메뉴" hidden>
+  <button id="tk-today" onclick="openApp('tasks','today')">오늘</button>
+  <button id="tk-calendar" onclick="openApp('tasks','calendar')">캘린더</button>
+  <button id="tk-inbox" onclick="openApp('tasks','inbox')">메모·할 일</button>
+  <button id="tk-done" onclick="openApp('tasks','done')">완료</button>
 </nav>
 </aside>
 <main id="view"></main>
@@ -319,6 +327,23 @@ nav button.on{color:var(--accent);font-weight:700}
   </section>
 </div>
 
+<!-- 할 일·일정 추가·수정 창 -->
+<div class="sheet" id="taskSheet" onclick="if(event.target===this)closeTaskSheet()">
+  <section class="panel task-form" role="dialog" aria-modal="true" aria-labelledby="tkHeading">
+    <div class="food-form-heading"><h2 id="tkHeading">할 일·일정 추가</h2><button type="button" class="recipe-close" onclick="closeTaskSheet()">닫기</button></div>
+    <p class="recipe-form-help">날짜를 비워 두면 ‘메모·할 일’에 보관해요.</p>
+    <form onsubmit="event.preventDefault();saveTask()">
+      <label for="tkTitle">해야 할 일 <span aria-hidden="true">*</span></label><input id="tkTitle" required maxlength="200" placeholder="예: 병원 예약하기, 주말 약속">
+      <div class="task-form-row"><div><label for="tkDate">날짜</label><input id="tkDate" type="date" min="0100-01-01" max="9999-12-31" onchange="syncTaskTime()"></div><div><label for="tkTime">시간 <span class="muted">선택</span></label><input id="tkTime" type="time" disabled></div></div>
+      <button class="btn ghost" type="button" onclick="$('tkDate').value='';syncTaskTime()">날짜 없이 메모로 남기기</button>
+      <label class="task-important" for="tkImportant"><input id="tkImportant" type="checkbox">중요한 일로 표시</label>
+      <label for="tkNotes">메모</label><textarea id="tkNotes" rows="5" maxlength="20000" placeholder="준비할 것, 장소, 잊지 말아야 할 내용을 자유롭게 적어두세요."></textarea>
+      <p id="tkNotice" role="status" aria-live="polite"></p>
+      <button class="btn" id="tkSave" type="submit">저장</button><button class="btn danger" id="tkDelete" type="button" onclick="deleteTask()" hidden>삭제</button>
+    </form>
+  </section>
+</div>
+<script src="tasks.js"></script>
 <script src="recipes.js"></script>
 <script src="fridge.js"></script>
 <script src="platform.js"></script>
@@ -354,7 +379,7 @@ let S=load(); START_DAY=dayOf(S); S.cur=periodOf(today());
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.p)return prepareFoodData(s)}catch(e){}return prepareFoodData({p:{}})}
 // 시작일이 저장돼 있지 않은 예전 기록은 기간 이름(예: 2026-10-21)에서 읽어옴
 function dayOf(s){const k=Object.keys(s.p)[0];return s.day||(k?Number(k.slice(8)):1)}
-function save(){S.schemaVersion=4;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장에 실패했어요. 저장 공간을 확인하고 백업을 먼저 받아두세요.');return false}
+function save(){S.schemaVersion=5;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장에 실패했어요. 저장 공간을 확인하고 백업을 먼저 받아두세요.');return false}
   if(syncOn()){SY.dirty=true;saveSY();seq++;clearTimeout(pushTimer);pushTimer=setTimeout(push,800)}return true}
 
 function ensure(k){
@@ -395,7 +420,7 @@ function render(){
   const t=wide.matches&&tab==='list'?'home':tab;
   ['home','list','set'].forEach(x=>{$('t-'+x).classList.toggle('on',activeApp==='ledger'&&x===t);$('t-'+x).setAttribute('aria-current',activeApp==='ledger'&&x===t?'page':'false')});
   updatePlatformShell();
-  $('view').innerHTML=activeApp==='platform'?platformPage():activeApp==='settings'?sharedSettings():activeApp==='recipes'?recipePage():activeApp==='fridge'?fridgePage():t==='set'?settings(m):t==='list'?list(m)
+  $('view').innerHTML=activeApp==='platform'?platformPage():activeApp==='settings'?sharedSettings():activeApp==='tasks'?taskPage():activeApp==='recipes'?recipePage():activeApp==='fridge'?fridgePage():t==='set'?settings(m):t==='list'?list(m)
     :wide.matches?`<div class="cols"><div>${home(m,c)}</div><div>${list(m)}</div></div>`:home(m,c);
   updateFoodNav();
 }
@@ -528,10 +553,10 @@ function settings(m){
   <div class="card"><h2>동기화·백업</h2><p class="muted">모든 앱의 데이터는 플랫폼 공통 설정에서 함께 관리해요.</p><button class="btn ghost" onclick="openSharedSettings()">공통 설정 열기</button></div></div>`}
 
 function sharedSettings(){
-  return `<div class="platform-settings-intro"><h1>공통 설정</h1><p>가계부, 냉장고, 레시피의 연결·백업을 함께 관리해요.</p></div><div class="setg">${syncCard()}
+  return `<div class="platform-settings-intro"><h1>공통 설정</h1><p>가계부, 냉장고, 레시피, 할 일·일정의 연결·백업을 함께 관리해요.</p></div><div class="setg">${syncCard()}
 
-  <div class="card"><h2>가계부·냉장고·레시피 백업</h2>
-  <p class="muted" style="margin-bottom:6px">지출, 식재료 등록 대기, 냉장고 재고, 레시피와 첨부 사진을 함께 저장하고 불러와요.</p>
+  <div class="card"><h2>가계부·냉장고·레시피 백업 · 할 일·일정 포함</h2>
+  <p class="muted" style="margin-bottom:6px">지출, 식재료 등록 대기, 냉장고 재고, 레시피와 사진, 할 일·일정·메모를 함께 저장하고 불러와요.</p>
   <p class="muted" style="margin-bottom:6px">${syncOn()?'구글 시트에도 저장되고 있어요. 그래도 가끔 백업 파일을 받아두면 더 안전해요.'
     :'기록은 이 기기의 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업해 두세요.'}</p>
   <button class="btn ghost" onclick="exportData()">백업 파일 저장</button>
@@ -715,11 +740,11 @@ function exportData(){const b=new Blob([JSON.stringify(S)],{type:'application/js
   setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();
   r.onload=()=>{try{const d=prepareFoodData(JSON.parse(r.result));
-    if(confirm('지금 가계부·냉장고·레시피 기록을 백업 내용으로 바꿀까요?\n레시피가 없는 예전 백업을 불러오면 현재 레시피도 지워져요.')){
+    if(confirm('지금 가계부·냉장고·레시피·할 일·일정 기록을 백업 내용으로 바꿀까요?\n레시피나 할 일·일정이 없는 예전 백업을 불러오면 해당 기록도 지워져요.')){
       const previous=S,previousDay=START_DAY;S=d;START_DAY=dayOf(S);S.cur=periodOf(today());
       if(!save()){S=previous;START_DAY=previousDay;return}lastFoodUse=null;openPlatform()}}
     catch(e){alert('올바른 백업 파일이 아니에요')}};r.readAsText(f);inp.value=''}
-function resetAll(){if(confirm('정말 가계부·냉장고·레시피의 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S=prepareFoodData({cur:periodOf(today()),day:START_DAY,p:{}});lastFoodUse=null;save();openPlatform()}}
+function resetAll(){if(confirm('정말 가계부·냉장고·레시피·할 일·일정의 모든 기록을 지울까요? 되돌릴 수 없어요.'+(syncOn()?'\n연결된 구글 시트의 기록도 지워져요.':''))){S=prepareFoodData({cur:periodOf(today()),day:START_DAY,p:{}});lastFoodUse=null;save();openPlatform()}}
 
 // ---- 구글 시트 동기화 ----
 const SKEY='my-gagyebu-sync';
@@ -747,9 +772,9 @@ function syncInfo(){return syncState==='err'?'지금은 연결이 안 돼서 이
   :'연결됨 · 마지막 동기화 '+(SY.at||'-')}
 function stamp(){const d=new Date();SY.at=`${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;saveSY();setSync('ok')}
 // 보내는 중에 앱을 닫아도 끝까지 전송되도록 keepalive 사용 (브라우저 제한 64KB 이하일 때만)
-async function api(body){const str=body&&JSON.stringify({key:SY.key,clientSchema:4,...body});
+async function api(body){const str=body&&JSON.stringify({key:SY.key,clientSchema:5,...body});
   const r=body?await fetch(SY.url,{method:'POST',body:str,keepalive:str.length<60000})
-    :await fetch(SY.url+'?key='+encodeURIComponent(SY.key)+'&clientSchema=4');
+    :await fetch(SY.url+'?key='+encodeURIComponent(SY.key)+'&clientSchema=5');
   const j=await r.json();if(j.error)throw new Error(j.error);return j}
 function adopt(j){const c=S.cur,d0=START_DAY,next=prepareFoodData(j.data&&j.data.p?j.data:{p:{}}),nextDay=dayOf(next);
   START_DAY=nextDay;next.cur=START_DAY===d0?c:periodOf(today());
@@ -786,8 +811,8 @@ function resolve(c){const rs=JSON.stringify(c.data),B=getBase();
 // 기록은 id별로, 나머지 설정은 항목별로: 한쪽만 바꿨으면 바꾼 쪽, 둘 다 바꿨으면 이 기기 쪽
 function merge3(B,L,R){const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b),pick=(b,l,r)=>eq(l,b)?r:l,out={p:{}};
   try{if(typeof B==='string')B=JSON.parse(B)}catch(e){return null}
-  for(const k of new Set([...Object.keys(L),...Object.keys(R)]))if(k!=='p'&&k!=='foods'&&k!=='recipes'){const v=k==='cur'?L.cur:pick(B[k],L[k],R[k]);if(v!==undefined)out[k]=v}
-  out.foods=mergeFoodRecords(B.foods,L.foods,R.foods);out.recipes=mergeFoodRecords(B.recipes,L.recipes,R.recipes);out.schemaVersion=4;
+  for(const k of new Set([...Object.keys(L),...Object.keys(R)]))if(k!=='p'&&k!=='foods'&&k!=='recipes'&&k!=='tasks'){const v=k==='cur'?L.cur:pick(B[k],L[k],R[k]);if(v!==undefined)out[k]=v}
+  out.foods=mergeFoodRecords(B.foods,L.foods,R.foods);out.recipes=mergeFoodRecords(B.recipes,L.recipes,R.recipes);out.tasks=mergeFoodRecords(B.tasks,L.tasks,R.tasks);out.schemaVersion=5;
   for(const food of Object.values(out.foods))delete food.openedAt;
   for(const k of new Set([...Object.keys(L.p),...Object.keys(R.p)])){const b=B.p&&B.p[k]||{},l=L.p[k],r=R.p[k],m={};
     if(!l||!r){const{tx,plan,...rest}=l||r;out.p[k]={...rest,tx:[]};continue}
@@ -820,7 +845,7 @@ async function connectSync(){
   try{j=await api()}catch(e){SY={};setSync('');
     return alert(e.message==='auth'?'비밀번호가 맞지 않아요. Apps Script의 SECRET 값과 같은지 확인해 주세요.'
       :'연결하지 못했어요. URL과 배포 설정(액세스 권한: 모든 사용자)을 확인해 주세요.')}
-  const hasLocal=Object.values(S.p).some(m=>m.tx.length||m.start!==null)||foodItems().length>0||recipeItems().length>0;
+  const hasLocal=Object.values(S.p).some(m=>m.tx.length||m.start!==null)||foodItems().length>0||recipeItems().length>0||taskItems().length>0;
   if(j.data&&(!hasLocal||confirm('시트에 이미 기록이 있어요.\n\n[확인] 시트 기록 불러오기\n[취소] 이 기기 기록으로 시트 덮어쓰기')))adopt(j);
   else{SY.ver=j.ver;SY.dirty=true;seq++;saveSY();await push(true)}
   render()}
@@ -842,7 +867,7 @@ function syncCard(){
 restoreAppRoute();
 if(syncOn()){setSync('');pull()}
 // 앱을 내리거나 닫으면 기다리던 전송을 바로 보냄 (보내는 중이어도 한 번 더)
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull();else if(SY.dirty){clearTimeout(pushTimer);push(false,true)}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){pull();if(activeApp==='tasks'||activeApp==='platform')render()}else if(SY.dirty){clearTimeout(pushTimer);push(false,true)}});
 window.addEventListener('online',pull);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>

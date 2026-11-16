@@ -27,7 +27,7 @@ function prepareFoodData(data){
     if(item.status==='consumed'&&item.quantity>0)item.restoreQuantity=item.quantity;
     foods[id]=item;
   }
-  return prepareRecipeData({...data,schemaVersion:Math.max(4,Number(data.schemaVersion)||0),foods});
+  return prepareTaskData(prepareRecipeData({...data,schemaVersion:Math.max(5,Number(data.schemaVersion)||0),foods}));
 }
 function foodItems(){return Object.values(S.foods||{})}
 function foodPurchases(){return Object.values(S.p).flatMap(p=>p.tx).filter(t=>t.type==='out'&&Array.isArray(t.foodStores)&&t.foodStores.some(s=>Object.hasOwn(FOOD_STORES,s))).sort(byDate)}
@@ -48,8 +48,8 @@ function updateFoodNav(){
   $('foodNavCount').textContent=count||'';
   $('f-pending').setAttribute('aria-label','식재료 등록 대기'+(count?` ${count}건`:''));
   const fab=$('addRecord');
-  fab.setAttribute('aria-label',activeApp==='recipes'?'레시피 추가':activeApp==='fridge'?'식재료 직접 등록':'기록 추가');
-  fab.querySelector('.fabt').textContent=activeApp==='recipes'?' 레시피 추가':activeApp==='fridge'?' 식재료 추가':' 기록 추가';
+  fab.setAttribute('aria-label',activeApp==='tasks'?'할 일·일정 추가':activeApp==='recipes'?'레시피 추가':activeApp==='fridge'?'식재료 직접 등록':'기록 추가');
+  fab.querySelector('.fabt').textContent=activeApp==='tasks'?' 할 일·일정 추가':activeApp==='recipes'?' 레시피 추가':activeApp==='fridge'?' 식재료 추가':' 기록 추가';
 }
 function foodTaskSummary(){const n=pendingFoodTasks().length;return n?`<div class="card food-task food-task-summary"><div><strong>구매한 식재료를 등록해 주세요 · ${n}건</strong><p class="food-help">가계부에 체크한 식품이 냉장고에서 기다리고 있어요.</p></div><button class="btn" onclick="openApp('fridge','pending')">냉장고 보기</button></div>`:''}
 function foodSourceText(t){return `${t.date} · ${t.memo||t.cat} · ${won(t.amt)}`}

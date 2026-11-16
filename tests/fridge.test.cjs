@@ -31,6 +31,7 @@ function app(initial){
     back(){this.go(-1)},forward(){this.go(1)}
   };
   const context=vm.createContext({console,Date,crypto:webcrypto,Blob,URL,setTimeout(){},clearTimeout(){},alert:m=>alerts.push(m),confirm:()=>true,navigator:{},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},document:{body:element('body'),getElementById:element,addEventListener(){},querySelectorAll:selector=>selector==='#fFoodW input'?checks:selector==='#fFoodW input:checked'?checks.filter(c=>c.checked):[]},window:{location,history,matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(type,listener){if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(listener)}}});
+  vm.runInContext(fs.readFileSync(path.join(root,'tasks.js'),'utf8'),context,{filename:'tasks.js'});
   vm.runInContext(recipes,context,{filename:'recipes.js'});
   vm.runInContext(fridge,context,{filename:'fridge.js'});
   vm.runInContext(platform,context,{filename:'platform.js'});
@@ -411,6 +412,10 @@ test('Apps Script accepts new clients and blocks older clients after fridge migr
   assert.equal(vm.runInContext('handle(SECRET,null,3).error',d),'upgrade');
   assert.equal(vm.runInContext('handle(SECRET,{base:2,data:{}},3).error',d),'upgrade');assert.equal(writes,1);
   assert.equal(vm.runInContext('handle(SECRET,{base:2,data:{}},4).ok',d),true);assert.equal(writes,2);
+  current={ver:3,data:{schemaVersion:5,p:{},tasks:{}}};
+  assert.equal(vm.runInContext('handle(SECRET,null,4).error',d),'upgrade');
+  assert.equal(vm.runInContext('handle(SECRET,{base:3,data:{}},4).error',d),'upgrade');assert.equal(writes,2);
+  assert.equal(vm.runInContext('handle(SECRET,{base:3,data:{}},5).ok',d),true);assert.equal(writes,3);
   current={ver:1,data:{p:{}}};assert.equal(vm.runInContext('handle(SECRET,null,0).ver',d),1);
 });
 
@@ -430,7 +435,7 @@ test('recipes save, edit and reload with source, text and photos included in sha
   a.el('rc-original').value='가져온 원문';a.run(`recipeDraftImages=['data:image/png;base64,aGVsbG8='];saveRecipe()`);
   assert.equal(a.run('currentAppRoute.section'),id);const b=app(a.json('S'));
   assert.equal(b.run(`S.recipes['${id}'].source`),'가족 노트');assert.equal(b.run(`S.recipes['${id}'].images.length`),1);
-  assert.equal(b.run('recipeItems().length'),1);assert.equal(b.run('S.schemaVersion'),4);
+  assert.equal(b.run('recipeItems().length'),1);assert.equal(b.run('S.schemaVersion'),5);
   b.run(`openApp('recipes','${id}')`);assert.ok(b.el('view').innerHTML.includes('가져온 원문'));assert.ok(b.el('view').innerHTML.includes('rel="noopener noreferrer"'));
 });
 test('recipe search covers ingredients, source and tags and favorites filter independently',()=>{
@@ -520,4 +525,66 @@ test('recipe sync preserves category edits alongside notes from another device',
   const a=app(),id=addRecipe(a),base=a.json('S'),left=clone(base),right=clone(base);
   left.recipes[id].category='퓨전';right.recipes[id].notes='두 기기의 수정';a.context.base=base;a.context.left=left;a.context.right=right;
   const merged=a.json('merge3(JSON.stringify(base),left,right)'),b=app(merged);assert.equal(b.run(`S.recipes['${id}'].category`),'퓨전');assert.equal(b.run(`S.recipes['${id}'].notes`),'두 기기의 수정');
+});
+
+function addTask(a,title='병원 예약',date='',time=''){
+  a.run(`openApp('tasks','inbox');openTaskSheet()`);a.el('tkTitle').value=title;a.el('tkDate').value=date;a.el('tkTime').value=time;a.el('tkNotes').value='준비물과 장소 메모';a.run('saveTask()');return a.run('taskItems().at(-1).id');
+}
+test('task migration preserves legacy apps and app routes only expose task navigation',()=>{
+  const a=app();addPurchase(a);addRecipe(a);const ledger=a.json('S.p'),recipes=a.json('S.recipes');
+  assert.deepEqual(a.json('S.tasks'),{});a.run(`openApp('tasks')`);
+  assert.equal(a.el('taskNav').hidden,false);assert.equal(a.el('taskHeader').hidden,false);assert.equal(a.el('recipeNav').hidden,true);assert.equal(a.el('fridgeNav').hidden,true);assert.equal(a.el('ledgerNav').hidden,true);
+  assert.deepEqual(a.json('S.p'),ledger);assert.deepEqual(a.json('S.recipes'),recipes);
+  a.run(`window.location.hash='#tasks/calendar';restoreAppRoute()`);assert.equal(a.run('currentAppRoute.section'),'calendar');
+  a.run(`openApp('tasks','invalid')`);assert.equal(a.run('currentAppRoute.section'),'today');
+});
+test('undated notes and timed events save, edit, complete, undo and reload',()=>{
+  const a=app(),note=addTask(a),event=addTask(a,'약속','2026-11-20','14:30');
+  assert.equal(a.run('currentAppRoute.section'),'calendar');assert.equal(a.run('taskDay'),'2026-11-20');
+  a.run(`openTaskSheet('${note}')`);a.el('tkDate').value='2026-11-21';a.el('tkImportant').checked=true;a.run('saveTask()');
+  assert.equal(a.run(`S.tasks['${note}'].important`),true);a.run(`toggleTask('${event}')`);assert.equal(a.run(`S.tasks['${event}'].done`),true);
+  a.run(`openApp('tasks','done')`);assert.ok(a.el('view').innerHTML.includes('약속'));a.run(`toggleTask('${event}')`);assert.equal(a.run(`S.tasks['${event}'].done`),false);
+  const b=app(a.json('S'));assert.equal(b.run(`S.tasks['${event}'].time`),'14:30');assert.equal(b.run(`S.tasks['${note}'].date`),'2026-11-21');
+  b.run(`openTaskSheet('${event}')`);b.el('tkDate').value='';b.run('syncTaskTime();saveTask()');assert.equal(b.run(`S.tasks['${event}'].time`),'');assert.equal(b.run('currentAppRoute.section'),'inbox');
+});
+test('home task alerts exclude completed, undated and future work and open the today page',()=>{
+  const a=app(),date=a.run('today()'),id=addTask(a,'오늘 일',date);addTask(a,'밀린 일','2020-01-01');addTask(a,'언젠가');addTask(a,'먼 미래','2999-01-01');
+  const alerts=a.json('taskPlatformAlerts()');assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('기한 지난 일 1건'));assert.ok(alerts[0].text.includes('오늘 할 일·일정 1건'));
+  a.run(`toggleTask('${id}');openPlatform()`);assert.ok(!a.el('view').innerHTML.includes('오늘 할 일·일정 1건'));assert.ok(a.el('view').innerHTML.includes('platformTaskAlert'));
+});
+test('calendar handles leap years, month boundaries and task counts independently of ledger periods',()=>{
+  const a=app();addTask(a,'윤일','2024-02-29');a.run(`openApp('tasks','calendar')`);
+  assert.equal((a.run('taskCalendar()').match(/aria-label="2024-02-\d{2}/g)||[]).length,29);
+  assert.ok(a.run('taskCalendar()').includes('미완료 1건'));a.run('moveTaskMonth(1)');assert.equal(a.run('taskDay'),'2024-03-01');a.run(`taskMonth='2026-12';moveTaskMonth(1)`);assert.equal(a.run('taskMonth'),'2027-01');
+  const before=a.json('S.tasks');a.run('movePeriod(-1)');assert.deepEqual(a.json('S.tasks'),before);
+});
+test('task drafts are protected on app navigation and native Back and deleted tasks cannot reopen',()=>{
+  const a=app(),id=addTask(a);a.run(`openApp('tasks','inbox');openTaskSheet('${id}')`);a.el('tkNotes').value='아직 저장 안 함';a.context.confirm=()=>false;
+  a.run('openPlatform()');assert.equal(a.run('activeApp'),'tasks');a.run('window.history.back()');assert.equal(a.el('taskSheet').classList.contains('show'),true);assert.equal(a.el('tkNotes').value,'아직 저장 안 함');
+  a.context.confirm=()=>true;a.run('window.history.back()');assert.equal(a.el('taskSheet').classList.contains('show'),false);a.run('window.history.forward()');assert.equal(a.run('taskEditId'),id);
+  a.run('deleteTask();window.history.forward()');assert.equal(a.el('taskSheet').classList.contains('show'),false);assert.equal(a.run('taskItems().length'),0);
+});
+test('task save, completion and deletion failures roll back memory and retain drafts',()=>{
+  const a=app(),id=addTask(a),before=a.json('S.tasks');a.run(`openTaskSheet('${id}')`);a.el('tkTitle').value='실패할 수정';a.context.localStorage.setItem=()=>{throw Error('full')};
+  a.run('saveTask()');assert.deepEqual(a.json('S.tasks'),before);assert.equal(a.el('taskSheet').classList.contains('show'),true);assert.equal(a.el('tkTitle').value,'실패할 수정');
+  a.run(`toggleTask('${id}');deleteTask()`);assert.deepEqual(a.json('S.tasks'),before);
+});
+test('task validation rejects impossible dates, unsafe ids and malformed fields and escapes notes',()=>{
+  const a=app();assert.equal(a.run(`validTaskDate('2024-02-29')`),true);assert.equal(a.run(`validTaskDate('2026-02-29')`),false);
+  for(const tasks of [[],{x:{id:'x',title:'x',date:'2026-02-30'}},{x:{id:'x',title:'x',time:'09:00'}},{x:{id:'x',title:'x',date:'2026-11-01',time:'24:00'}},{x:{id:'x',title:'x',done:'false'}},{x:{id:'x',title:'x',notes:[]}},JSON.parse('{"__proto__":{"id":"__proto__","title":"x"}}')]){
+    a.context.invalid={p:{},tasks};assert.throws(()=>a.run('prepareFoodData(invalid)'));
+  }
+  const id=addTask(a,'<img src=x onerror=alert(1)>');a.run(`S.tasks['${id}'].notes='<script>bad</script>';openApp('tasks','inbox')`);
+  assert.ok(!a.el('view').innerHTML.includes('<script>'));assert.ok(a.el('view').innerHTML.includes('&lt;img'));a.run(`taskQuery='준비물'`);assert.equal(a.run(`taskItems().filter(taskMatches).length`),0);
+});
+test('task sync merges distinct additions, completion with remote notes and intentional deletion',()=>{
+  const a=app(),id=addTask(a);addPurchase(a);const base=a.json('S'),left=clone(base),right=clone(base);
+  left.tasks[id].done=true;left.tasks[id].completedAt='2026-11-16T10:00:00Z';right.tasks[id].notes='다른 기기 메모';right.tasks.remote={id:'remote',title:'새로운 일'};
+  a.context.base=base;a.context.left=left;a.context.right=right;const merged=a.json('merge3(JSON.stringify(base),left,right)');assert.equal(merged.tasks[id].done,true);assert.equal(merged.tasks[id].notes,'다른 기기 메모');assert.equal(Object.keys(merged.tasks).length,2);assert.deepEqual(merged.p,base.p);
+  assert.equal(app(merged).run('taskItems().length'),2);delete left.tasks[id];right.tasks[id]=clone(base.tasks[id]);assert.equal(a.run(`merge3(JSON.stringify(base),left,right).tasks['${id}']`),undefined);
+});
+test('task backup import round trips and legacy backup explicitly replaces all app records',()=>{
+  const a=app(),id=addTask(a),saved=JSON.stringify(a.json('S'));a.context.FileReader=class{readAsText(file){this.result=file;this.onload()}};
+  a.run('S.tasks={}');a.el('imp').files=[saved];a.run(`importData($('imp'))`);assert.equal(a.run(`S.tasks['${id}'].title`),'병원 예약');
+  a.el('imp').files=[JSON.stringify({p:{}})];a.run(`importData($('imp'))`);assert.deepEqual(a.json('S.tasks'),{});
 });

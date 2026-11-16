@@ -12,10 +12,11 @@ function handle(key, body, clientSchema) {
   lock.waitLock(20000);
   try {
     const cur = readData();
-    // 냉장고·레시피를 모르는 구버전 앱이 새 기록을 덮어쓰지 않도록 차단.
+    // 냉장고·레시피·할 일을 모르는 구버전 앱이 새 기록을 덮어쓰지 않도록 차단.
     // 새 앱을 모든 기기에서 새로고침한 뒤 사용하세요.
     if (cur.data && cur.data.schemaVersion >= 3 && clientSchema < 3) return out({ error: 'upgrade' });
     if (cur.data && cur.data.schemaVersion >= 4 && clientSchema < 4) return out({ error: 'upgrade' });
+    if (cur.data && cur.data.schemaVersion >= 5 && clientSchema < 5) return out({ error: 'upgrade' });
     if (!body) return out(cur);
     // 다른 기기가 먼저 바꿨으면 덮어쓰지 않고 알려줌
     if (!body.force && cur.ver && body.base !== cur.ver) return out({ conflict: true, ver: cur.ver, data: cur.data });
