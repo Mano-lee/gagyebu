@@ -417,6 +417,10 @@ test('Apps Script accepts new clients and blocks older clients after fridge migr
   assert.equal(vm.runInContext('handle(SECRET,null,4).error',d),'upgrade');
   assert.equal(vm.runInContext('handle(SECRET,{base:3,data:{}},4).error',d),'upgrade');assert.equal(writes,2);
   assert.equal(vm.runInContext('handle(SECRET,{base:3,data:{}},5).ok',d),true);assert.equal(writes,3);
+  current={ver:4,data:{schemaVersion:6,p:{},tasks:{}}};
+  assert.equal(vm.runInContext('handle(SECRET,null,5).error',d),'upgrade');
+  assert.equal(vm.runInContext('handle(SECRET,{base:4,data:{}},5).error',d),'upgrade');assert.equal(writes,3);
+  assert.equal(vm.runInContext('handle(SECRET,{base:4,data:{}},6).ok',d),true);assert.equal(writes,4);
   current={ver:1,data:{p:{}}};assert.equal(vm.runInContext('handle(SECRET,null,0).ver',d),1);
 });
 
@@ -436,7 +440,7 @@ test('recipes save, edit and reload with source, text and photos included in sha
   a.el('rc-original').value='가져온 원문';a.run(`recipeDraftImages=['data:image/png;base64,aGVsbG8='];saveRecipe()`);
   assert.equal(a.run('currentAppRoute.section'),id);const b=app(a.json('S'));
   assert.equal(b.run(`S.recipes['${id}'].source`),'가족 노트');assert.equal(b.run(`S.recipes['${id}'].images.length`),1);
-  assert.equal(b.run('recipeItems().length'),1);assert.equal(b.run('S.schemaVersion'),5);
+  assert.equal(b.run('recipeItems().length'),1);assert.equal(b.run('S.schemaVersion'),6);
   b.run(`openApp('recipes','${id}')`);assert.ok(b.el('view').innerHTML.includes('가져온 원문'));assert.ok(b.el('view').innerHTML.includes('rel="noopener noreferrer"'));
 });
 test('recipe search covers ingredients, source and tags and favorites filter independently',()=>{
@@ -531,6 +535,54 @@ test('recipe sync preserves category edits alongside notes from another device',
 function addTask(a,title='병원 예약',date='',time=''){
   a.run(`openApp('tasks','inbox');openTaskSheet()`);a.el('tkTitle').value=title;a.el('tkDate').value=date;a.el('tkTime').value=time;a.el('tkNotes').value='준비물과 장소 메모';a.run('saveTask()');return a.run('taskItems().at(-1).id');
 }
+function addRangeTask(a,title,start,end){
+  a.run(`openApp('tasks','calendar');openTaskSheet()`);a.el('tkTitle').value=title;a.el('tkDate').value=start;a.el('tkEndDate').value=end;a.run('saveTask()');return a.run('taskItems().at(-1).id');
+}
+test('legacy single-day tasks keep their data and new ranges save, reopen and become undated notes',()=>{
+  const legacy={id:'legacy',title:'예전 일정',date:'2026-11-23',time:'14:00'},a=app({p:{},tasks:{legacy}});assert.deepEqual(a.json('S.tasks.legacy'),legacy);assert.equal(a.run(`taskEndDate(S.tasks.legacy)`),legacy.date);
+  const id=addRangeTask(a,'이틀 일정','2026-11-23','2026-11-24'),b=app(a.json('S'));b.run(`openTaskSheet('${id}')`);assert.equal(b.el('tkDate').value,'2026-11-23');assert.equal(b.el('tkEndDate').value,'2026-11-24');
+  b.el('tkDate').value='';b.run('syncTaskTime();saveTask()');assert.equal(b.run(`S.tasks['${id}'].endDate`),'');assert.equal(b.run(`S.tasks['${id}'].date`),'');assert.equal(b.el('tkEndDate').disabled,true);
+});
+test('range membership and rendered calendars include both endpoints, leap days and year boundaries',()=>{
+  const a=app(),id=addRangeTask(a,'윤년 일정','2024-02-28','2024-03-01');
+  for(const date of ['2024-02-28','2024-02-29','2024-03-01'])assert.equal(a.run(`taskOnDate(S.tasks['${id}'],'${date}')`),true);
+  assert.equal(a.run(`taskOnDate(S.tasks['${id}'],'2024-03-02')`),false);
+  a.run(`taskMonth='2024-02';taskDay='2024-02-29';openApp('tasks','calendar')`);assert.ok(a.run('taskCalendar()').includes('aria-label="2024-02-29, 미완료 1건"'));assert.ok(a.el('view').innerHTML.includes('윤년 일정'));
+  a.run(`taskMonth='2024-03';taskDay='2024-03-01';render()`);assert.ok(a.run('taskCalendar()').includes('aria-label="2024-03-01, 미완료 1건"'));
+  const across=addRangeTask(a,'연말 일정','2026-12-31','2027-01-02');assert.ok(a.run(`taskDateLabel(S.tasks['${across}'])`).includes('2027년'));assert.equal(a.run(`taskOnDate(S.tasks['${across}'],'2027-01-01')`),true);
+});
+test('today and home alerts show ranges as ongoing until their inclusive end date and count events once',()=>{
+  const a=app();a.context.Date=class extends Date{constructor(...args){super(...(args.length?args:['2027-01-01T12:00:00']))}};
+  const id=addRangeTask(a,'진행하는 일정','2026-12-31','2027-01-02');addRangeTask(a,'종료일이 오늘','2026-12-30','2027-01-01');addRangeTask(a,'지난 일정','2026-12-29','2026-12-31');addRangeTask(a,'다가올 일정','2027-01-03','2027-01-05');
+  a.run(`openApp('tasks','today')`);assert.ok(a.el('view').innerHTML.includes('진행 중'));assert.equal(a.run(`taskIsPast(S.tasks['${id}'])`),false);
+  const alerts=a.json('taskPlatformAlerts()');assert.equal(alerts.length,2);assert.ok(alerts[0].text.includes('오늘 할 일·일정 2건'));assert.ok(alerts[0].text.includes('기한 지난 일 1건'));assert.ok(alerts[1].text.includes('예정 일정 1건'));assert.ok(alerts[1].text.includes('01/03 ~ 01/05'));
+  a.context.Date=class extends Date{constructor(...args){super(...(args.length?args:['2027-01-03T12:00:00']))}};assert.equal(a.run(`taskIsPast(S.tasks['${id}'])`),true);
+});
+test('range validation rejects inverted dates, impossible end dates and ends without starts',()=>{
+  const a=app();for(const item of [{date:'2026-11-23',endDate:'2026-11-22'},{endDate:'2026-11-24'},{date:'2026-02-01',endDate:'2026-02-30'},{date:'2026-11-23',endDate:[] }]){
+    a.context.invalid={p:{},tasks:{x:{id:'x',title:'x',...item}}};assert.throws(()=>a.run('prepareFoodData(invalid)'));
+  }
+  a.run(`openApp('tasks');openTaskSheet()`);a.el('tkTitle').value='잘못된 기간';a.el('tkDate').value='2026-11-23';a.el('tkEndDate').value='2026-11-22';a.run('saveTask()');assert.equal(a.run('taskItems().length'),0);assert.ok(a.el('tkNotice').textContent.includes('종료일'));
+  a.el('tkEndDate').value='2026-11-23';a.run('saveTask()');assert.equal(a.run('taskItems().length'),1);
+});
+test('completion and undo apply to the whole range and remove or restore every calendar day',()=>{
+  const a=app(),id=addRangeTask(a,'기간 일정','2026-11-23','2026-11-25');a.run(`taskMonth='2026-11';toggleTask('${id}')`);assert.ok(!a.run('taskCalendar()').includes('미완료 1건'));
+  a.run(`toggleTask('${id}')`);for(const date of ['2026-11-23','2026-11-24','2026-11-25'])assert.ok(a.run('taskCalendar()').includes(`aria-label="${date}, 미완료 1건"`));
+});
+test('end-date-only drafts are protected by Back and preserved if saving fails',()=>{
+  const a=app(),id=addRangeTask(a,'기간','2026-11-23','2026-11-24');a.run(`openTaskSheet('${id}')`);a.el('tkEndDate').value='2026-11-25';a.context.confirm=()=>false;a.run('window.history.back()');assert.equal(a.el('taskSheet').classList.contains('show'),true);assert.equal(a.el('tkEndDate').value,'2026-11-25');
+  a.context.localStorage.setItem=()=>{throw Error('full')};a.run('saveTask()');assert.equal(a.run(`S.tasks['${id}'].endDate`),'2026-11-24');assert.equal(a.el('tkEndDate').value,'2026-11-25');
+});
+test('range sync keeps coherent schedules while combining completion and notes from another device',()=>{
+  const a=app(),id=addRangeTask(a,'기간','2026-11-23','2026-11-25'),base=a.json('S'),left=clone(base),right=clone(base);
+  left.tasks[id].date='2026-12-01';left.tasks[id].endDate='2026-12-03';right.tasks[id].date='2026-11-20';right.tasks[id].endDate='2026-11-21';right.tasks[id].notes='다른 기기 메모';right.tasks[id].done=true;
+  a.context.base=base;a.context.left=left;a.context.right=right;const merged=a.json('merge3(JSON.stringify(base),left,right)');assert.equal(merged.tasks[id].date,'2026-12-01');assert.equal(merged.tasks[id].endDate,'2026-12-03');assert.equal(merged.tasks[id].notes,'다른 기기 메모');assert.equal(merged.tasks[id].done,true);assert.equal(app(merged).run('taskItems().length'),1);
+});
+test('range backups round trip and malformed imports leave existing records untouched',()=>{
+  const a=app(),id=addRangeTask(a,'백업 기간','2026-11-23','2026-11-24'),saved=a.json('S');a.context.FileReader=class{readAsText(file){this.result=file;this.onload()}};
+  a.run('S.tasks={}');a.el('imp').files=[JSON.stringify(saved)];a.run(`importData($('imp'))`);assert.equal(a.run(`S.tasks['${id}'].endDate`),'2026-11-24');
+  const bad=clone(saved);bad.tasks[id].endDate='2026-11-01';a.el('imp').files=[JSON.stringify(bad)];a.run(`importData($('imp'))`);assert.deepEqual(a.json('S'),saved);
+});
 test('task migration preserves legacy apps and app routes only expose task navigation',()=>{
   const a=app();addPurchase(a);addRecipe(a);const ledger=a.json('S.p'),recipes=a.json('S.recipes');
   assert.deepEqual(a.json('S.tasks'),{});a.run(`openApp('tasks')`);

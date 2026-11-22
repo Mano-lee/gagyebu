@@ -17,6 +17,7 @@ function handle(key, body, clientSchema) {
     if (cur.data && cur.data.schemaVersion >= 3 && clientSchema < 3) return out({ error: 'upgrade' });
     if (cur.data && cur.data.schemaVersion >= 4 && clientSchema < 4) return out({ error: 'upgrade' });
     if (cur.data && cur.data.schemaVersion >= 5 && clientSchema < 5) return out({ error: 'upgrade' });
+    if (cur.data && cur.data.schemaVersion >= 6 && clientSchema < 6) return out({ error: 'upgrade' });
     if (!body) return out(cur);
     // 다른 기기가 먼저 바꿨으면 덮어쓰지 않고 알려줌
     if (!body.force && cur.ver && body.base !== cur.ver) return out({ conflict: true, ver: cur.ver, data: cur.data });

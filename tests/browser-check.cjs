@@ -457,16 +457,52 @@ let browser,socket,profile;
     const form=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(out,'tasks-form-'+name+'.png'),Buffer.from(form.data,'base64'));
     await evaluate('closeTaskSheet()');await waitFor(()=>evaluate('!sheetHistoryBackPending'),'task editor close');
   }
+  console.log('Checking inclusive date ranges, ongoing work, completion and range editing.');
+  const rangeStart=await evaluate(`new Date(Date.parse(today()+'T12:00:00Z')-864e5).toISOString().slice(0,10)`),rangeEnd=await evaluate(`new Date(Date.parse(today()+'T12:00:00Z')+864e5).toISOString().slice(0,10)`);
+  await evaluate(`openTaskSheet();$('tkTitle').value='이틀 이상 이어지는 일정';$('tkDate').value='${rangeStart}';$('tkDate').dispatchEvent(new Event('change',{bubbles:true}))`);
+  assert.equal(await evaluate(`!$('tkEndDate').disabled&&$('tkEndDate').min==='${rangeStart}'`),true);
+  await evaluate(`$('tkEndDate').value='${rangeEnd}';$('tkSave').click()`);
+  await waitFor(()=>evaluate('!sheetHistoryBackPending'),'range saved');
+  const rangeId=await evaluate('taskItems().at(-1).id');
+  for(const date of [rangeStart,await evaluate('today()'),rangeEnd]){
+    await evaluate(`taskMonth='${date.slice(0,7)}';selectTaskDay('${date}')`);
+    assert.equal(await evaluate(`document.querySelector('[data-task-id="${rangeId}"]')!==null`),true);
+    assert.equal(await evaluate(`document.querySelector('.task-calendar [data-date="${date}"]').classList.contains('has-tasks')`),true);
+  }
+  await evaluate(`openApp('tasks','today')`);
+  assert.equal(await evaluate(`document.querySelector('.task-today-primary .task-group:first-child [data-task-id="${rangeId}"] .task-meta').textContent.includes('진행 중')`),true);
+  assert.equal(await evaluate(`document.querySelector('[data-task-id="${rangeId}"] .task-meta').classList.contains('task-late')`),false);
+  await evaluate(`openTaskSheet('${rangeId}');$('tkEndDate').value='0100-01-01';saveTask()`);
+  assert.equal(await evaluate(`$('tkEndDate').checkValidity()`),false);
+  assert.equal(await evaluate(`S.tasks['${rangeId}'].endDate`),rangeEnd);
+  assert.equal(await evaluate(`$('tkNotice').textContent.includes('종료일')`),true);
+  await evaluate(`$('tkEndDate').value='9999-12-31';window.__rangePrompts=0;window.confirm=()=>{window.__rangePrompts++;return false};window.history.back()`);
+  await waitFor(()=>evaluate(`__rangePrompts===1&&!!window.history.state?.appSheet`),'end date draft protected on Back');
+  assert.equal(await evaluate(`$('tkEndDate').value`),'9999-12-31');
+  await evaluate(`window.confirm=()=>true;window.history.back()`);await waitFor(()=>evaluate(`!$('taskSheet').classList.contains('show')`),'range editor discarded');
+  for(const width of [360,1280]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<960});
+    await evaluate(`openTaskSheet('${rangeId}')`);assert.equal(await evaluate(`$('tkEndDate').value`),rangeEnd);
+    assert.ok(await evaluate(`document.querySelector('#taskSheet .panel').scrollWidth<=document.querySelector('#taskSheet .panel').clientWidth`),`Range form overflow at ${width}px`);
+    const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(out,'tasks-range-form-'+width+'.png'),Buffer.from(shot.data,'base64'));
+    await evaluate(`closeTaskSheet()`);await waitFor(()=>evaluate('!sheetHistoryBackPending'),'range form closed');
+  }
+  await evaluate(`toggleTask('${rangeId}');taskMonth='${rangeStart.slice(0,7)}';taskDay='${rangeStart}';openApp('tasks','calendar')`);
+  assert.equal(await evaluate(`document.querySelector('.task-day.selected').classList.contains('has-tasks')`),false);
+  assert.equal(await evaluate(`document.querySelector('[data-task-id="${rangeId}"]').classList.contains('task-done')`),true);
+  await evaluate(`toggleTask('${rangeId}')`);assert.equal(await evaluate(`document.querySelector('.task-day.selected').classList.contains('has-tasks')`),true);
   // Capture the real export Blob, then import it through a synthetic file input.
   await evaluate(`openSharedSettings();window.__recipeBackup=null;window.__originalCreateURL=URL.createObjectURL;window.__originalAnchorClick=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){};URL.createObjectURL=blob=>{window.__recipeBackup=blob;return __originalCreateURL(blob)};try{exportData()}finally{URL.createObjectURL=__originalCreateURL;HTMLAnchorElement.prototype.click=__originalAnchorClick}`);
   assert.equal(await evaluate(`__recipeBackup.text().then(text=>JSON.parse(text).recipes['${recipeId}'].images.length)`),1);
   assert.equal(await evaluate(`__recipeBackup.text().then(text=>JSON.parse(text).tasks['${noteId}'].notes)`),'분리수거 준비물 메모');
   assert.equal(await evaluate(`__recipeBackup.text().then(text=>JSON.parse(text).appOrder[0])`),'tasks');
+  assert.equal(await evaluate(`__recipeBackup.text().then(text=>JSON.parse(text).tasks['${rangeId}'].endDate)`),rangeEnd);
   await evaluate(`(async()=>{const transfer=new DataTransfer();transfer.items.add(new File([await __recipeBackup.text()],'synthetic-backup.json',{type:'application/json'}));S.recipes={};S.tasks={};$('imp').files=transfer.files;importData($('imp'))})()`);
   await waitFor(()=>evaluate(`recipeItems().length===1 && activeApp==='platform'`),'recipe backup import');
   assert.equal(await evaluate(`S.recipes['${recipeId}'].notes`),'다음엔 김치를 조금 더');
   assert.equal(await evaluate(`S.recipes['${recipeId}'].category`),'한식');
   assert.equal(await evaluate(`S.tasks['${eventId}'].time`),'14:30');
+  assert.equal(await evaluate(`S.tasks['${rangeId}'].endDate`),rangeEnd);
   await evaluate(`openApp('recipes');openRecipeSheet();$('rc-title').value='삭제할 임시 레시피';saveRecipe()`);
   await waitFor(()=>evaluate('!sheetHistoryBackPending'),'temporary recipe saved');
   const deletedRecipe=await evaluate('recipeItems().at(-1).id');
@@ -498,6 +534,7 @@ let browser,socket,profile;
   assert.equal(await evaluate(`document.querySelector('.app-launch').id`),'t-tasks');
   await evaluate(`$('t-tasks').click();$('tk-inbox').click()`);
   assert.equal(await evaluate(`document.querySelector('.task-copy strong').textContent.includes('평소 할 일')`),true);
+  await evaluate(`$('tk-today').click()`);assert.equal(await evaluate(`document.querySelector('.task-today-primary .task-group:first-child [data-task-id="${rangeId}"]')!==null`),true);
   assert.equal(await evaluate(`S.tasks['${eventId}'].time`),'14:30');
   await evaluate(`openPlatform()`);
   await evaluate(`$('t-recipes').click();document.querySelector('.recipe-card-open').click()`);

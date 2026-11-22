@@ -27,7 +27,7 @@ function prepareFoodData(data){
     if(item.status==='consumed'&&item.quantity>0)item.restoreQuantity=item.quantity;
     foods[id]=item;
   }
-  return prepareTaskData(prepareRecipeData({...data,schemaVersion:Math.max(5,Number(data.schemaVersion)||0),foods}));
+  return prepareTaskData(prepareRecipeData({...data,schemaVersion:Math.max(6,Number(data.schemaVersion)||0),foods}));
 }
 function foodItems(){return Object.values(S.foods||{})}
 function foodPurchases(){return Object.values(S.p).flatMap(p=>p.tx).filter(t=>t.type==='out'&&Array.isArray(t.foodStores)&&t.foodStores.some(s=>Object.hasOwn(FOOD_STORES,s))).sort(byDate)}

@@ -337,7 +337,9 @@ nav button.on{color:var(--accent);font-weight:700}
     <p class="recipe-form-help">날짜를 비워 두면 ‘메모·할 일’에 보관해요.</p>
     <form onsubmit="event.preventDefault();saveTask()">
       <label for="tkTitle">해야 할 일 <span aria-hidden="true">*</span></label><input id="tkTitle" required maxlength="200" placeholder="예: 병원 예약하기, 주말 약속">
-      <div class="task-form-row"><div><label for="tkDate">날짜</label><input id="tkDate" type="date" min="0100-01-01" max="9999-12-31" onchange="syncTaskTime()"></div><div><label for="tkTime">시간 <span class="muted">선택</span></label><input id="tkTime" type="time" disabled></div></div>
+      <div class="task-form-row"><div><label for="tkDate">시작일</label><input id="tkDate" type="date" min="0100-01-01" max="9999-12-31" onchange="syncTaskTime()" aria-describedby="tkDateHelp"></div><div><label for="tkEndDate">종료일 <span class="muted">선택</span></label><input id="tkEndDate" type="date" min="0100-01-01" max="9999-12-31" disabled aria-describedby="tkDateHelp"></div></div>
+      <p id="tkDateHelp" class="recipe-form-help">종료일을 비우면 하루 일정이에요. 기간 일정은 시작일과 종료일을 모두 포함해요.</p>
+      <label for="tkTime">시작 시간 <span class="muted">선택</span></label><input id="tkTime" type="time" disabled>
       <button class="btn ghost" type="button" onclick="$('tkDate').value='';syncTaskTime()">날짜 없이 메모로 남기기</button>
       <label class="task-important" for="tkImportant"><input id="tkImportant" type="checkbox">중요한 일로 표시</label>
       <label for="tkNotes">메모</label><textarea id="tkNotes" rows="5" maxlength="20000" placeholder="준비할 것, 장소, 잊지 말아야 할 내용을 자유롭게 적어두세요."></textarea>
@@ -383,7 +385,7 @@ let S=load(); START_DAY=dayOf(S); S.cur=periodOf(today());
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.p)return addDocumentRecipes(prepareFoodData(s))}catch(e){}return addDocumentRecipes(prepareFoodData({p:{}}))}
 // 시작일이 저장돼 있지 않은 예전 기록은 기간 이름(예: 2026-10-21)에서 읽어옴
 function dayOf(s){const k=Object.keys(s.p)[0];return s.day||(k?Number(k.slice(8)):1)}
-function save(){S.schemaVersion=5;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장에 실패했어요. 저장 공간을 확인하고 백업을 먼저 받아두세요.');return false}
+function save(){S.schemaVersion=6;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장에 실패했어요. 저장 공간을 확인하고 백업을 먼저 받아두세요.');return false}
   if(syncOn()){SY.dirty=true;saveSY();seq++;clearTimeout(pushTimer);pushTimer=setTimeout(push,800)}return true}
 
 function ensure(k){
@@ -776,9 +778,9 @@ function syncInfo(){return syncState==='err'?'지금은 연결이 안 돼서 이
   :'연결됨 · 마지막 동기화 '+(SY.at||'-')}
 function stamp(){const d=new Date();SY.at=`${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;saveSY();setSync('ok')}
 // 보내는 중에 앱을 닫아도 끝까지 전송되도록 keepalive 사용 (브라우저 제한 64KB 이하일 때만)
-async function api(body){const str=body&&JSON.stringify({key:SY.key,clientSchema:5,...body});
+async function api(body){const str=body&&JSON.stringify({key:SY.key,clientSchema:6,...body});
   const r=body?await fetch(SY.url,{method:'POST',body:str,keepalive:new Blob([str]).size<60000})
-    :await fetch(SY.url+'?key='+encodeURIComponent(SY.key)+'&clientSchema=5');
+    :await fetch(SY.url+'?key='+encodeURIComponent(SY.key)+'&clientSchema=6');
   const j=await r.json();if(j.error)throw new Error(j.error);return j}
 function adopt(j){const c=S.cur,d0=START_DAY,raw=prepareFoodData(j.data&&j.data.p?j.data:{p:{}}),next=addDocumentRecipes(raw),imported=next!==raw,nextDay=dayOf(next);recipeCollectionPending=false;
   START_DAY=nextDay;next.cur=START_DAY===d0?c:periodOf(today());
@@ -816,7 +818,7 @@ function resolve(c){const rs=JSON.stringify(c.data),B=getBase();
 function merge3(B,L,R){const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b),pick=(b,l,r)=>eq(l,b)?r:l,out={p:{}};
   try{if(typeof B==='string')B=JSON.parse(B)}catch(e){return null}
   for(const k of new Set([...Object.keys(L),...Object.keys(R)]))if(k!=='p'&&k!=='foods'&&k!=='recipes'&&k!=='tasks'){const v=k==='cur'?L.cur:pick(B[k],L[k],R[k]);if(v!==undefined)out[k]=v}
-  out.foods=mergeFoodRecords(B.foods,L.foods,R.foods);out.recipes=mergeFoodRecords(B.recipes,L.recipes,R.recipes);out.tasks=mergeFoodRecords(B.tasks,L.tasks,R.tasks);out.schemaVersion=5;
+  out.foods=mergeFoodRecords(B.foods,L.foods,R.foods);out.recipes=mergeFoodRecords(B.recipes,L.recipes,R.recipes);out.tasks=mergeTaskRecords(B.tasks,L.tasks,R.tasks);out.schemaVersion=6;
   for(const food of Object.values(out.foods))delete food.openedAt;
   for(const k of new Set([...Object.keys(L.p),...Object.keys(R.p)])){const b=B.p&&B.p[k]||{},l=L.p[k],r=R.p[k],m={};
     if(!l||!r){const{tx,plan,...rest}=l||r;out.p[k]={...rest,tx:[]};continue}

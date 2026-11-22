@@ -51,7 +51,7 @@
 .task-form label{display:block;font-size:13px;color:#44594c;margin:18px 0 7px}
 .task-form input,.task-form textarea{display:block;width:100%;min-width:0;border:1px solid #d9dfd9;border-radius:10px;padding:12px;background:#fff;font:inherit;font-size:14px;line-height:1.6;margin:0}
 .task-form input:disabled{background:#f4f3ef}.task-form textarea{resize:vertical;min-height:120px}
-.task-form-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:12px}
+.task-form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .task-form .task-important{display:flex;align-items:center;gap:8px}.task-important input{width:18px;height:18px;accent-color:var(--accent)}
 #tkNotice{color:#9b492d;font-size:13px;line-height:1.8;margin-top:14px}
 .task-app button:focus-visible,.task-form button:focus-visible{outline:3px solid #a8a2c7;outline-offset:3px}
