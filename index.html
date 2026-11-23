@@ -23,10 +23,10 @@ header{background:var(--accent);color:#fff;padding:18px 18px 22px}
 .lbl{font-size:13px;opacity:.8;margin-top:14px}
 .big{font-size:34px;font-weight:700;margin-top:2px}
 .big.neg{color:#ffd2c8}
-.pills{display:flex;gap:8px;margin-top:14px}
-.pill{flex:1;min-width:0;background:rgba(255,255,255,.14);border-radius:12px;padding:9px 10px;font-size:11px}
-.pill b{display:block;font-size:14px;margin-top:3px;overflow-wrap:anywhere}
-.pill small{display:block;font-size:10px;font-weight:500;opacity:.8;margin-top:2px;white-space:normal;letter-spacing:-.3px}
+.pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+.pill{min-width:0;background:rgba(255,255,255,.14);border-radius:12px;padding:12px;font-size:13px}
+.pill b{display:block;font-size:18px;margin-top:4px;overflow-wrap:anywhere}
+.pill small{display:block;font-size:12px;font-weight:500;opacity:.8;margin-top:4px;white-space:normal;letter-spacing:-.3px}
 main{padding:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
 .card h2{font-size:15px;margin-bottom:12px}
@@ -146,7 +146,7 @@ nav button.on{color:var(--accent);font-weight:700}
   .mnav span{font-size:13px}
   .lbl{margin-top:22px}
   .big{font-size:36px}
-  .pills{flex-direction:column;gap:6px;margin-top:18px}
+  .pills{display:flex;flex-direction:column;gap:6px;margin-top:18px}
   .pill{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:12px}
   .pill b{margin:0;font-size:15px;text-align:right}
   .sy{text-align:left}
@@ -188,10 +188,11 @@ nav button.on{color:var(--accent);font-weight:700}
 <header id="ledgerHeader">
   <div class="brand">가계부</div>
   <div class="mnav"><button onclick="movePeriod(-1)">‹</button><span id="plabel"></span><button onclick="movePeriod(1)">›</button></div>
-  <div class="lbl">고정지출 빼고 남은 돈</div>
+  <div class="lbl">고정지출·카드 대금 빼고 남은 돈</div>
   <div class="big" id="remain"></div>  <div class="pills">
     <div class="pill">이번 기간 수입<b id="pInc"></b></div>
     <div class="pill">고정지출<b id="pFixed"></b></div>
+    <div class="pill">신용카드 대금<b id="pCard"></b></div>
     <div class="pill">이번 기간 지출<b id="pSpent"></b></div>
   </div>
 </header>
@@ -423,7 +424,8 @@ function render(){
   $('remain').classList.toggle('neg',m.start!==null&&c.remain<0);
   // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록. 수입 기록이 있으면 그 합계를 아래에 작게
   $('pInc').innerHTML=won((m.start||0)+c.inc)+(c.inc?`<small>월급 외 +${won(c.inc)}</small>`:'');
-  $('pFixed').innerHTML=won(c.fixed)+(c.card?`<small>카드 대금 ${won(c.card)} 포함</small>`:'');
+  $('pFixed').textContent=won(c.fixed-c.card);
+  $('pCard').textContent=won(c.card);
   // 예정 지출은 아직 안 쓴 돈이라 지출 합계엔 안 넣고 아래에 작게 (남은 돈에서는 미리 뺌)
   $('pSpent').innerHTML=won(c.spent)+(c.credit?`<small>카드 사용 ${won(c.credit)} · 출금일에 차감</small>`:'')+(c.planned?`<small>지출 예정 ${won(c.planned)}</small>`:'');
   const t=wide.matches&&tab==='list'?'home':tab;

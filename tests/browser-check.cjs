@@ -106,10 +106,10 @@ let browser,socket,profile;
         {id:3,type:'out',pay:'credit',amt:60000,date:'2026-11-10',cat:'쇼핑'}
       ]}
     };render()`);
-  assert.ok((await evaluate(`$('pFixed').textContent`)).startsWith('300,000원'));
+  assert.equal(await evaluate(`$('pFixed').textContent`),'200,000원');
+  assert.equal(await evaluate(`$('pCard').textContent`),'100,000원');
   assert.equal(await evaluate(`$('remain').textContent`),'650,000원');
   assert.ok((await evaluate(`$('pSpent').textContent`)).startsWith('110,000원'));
-  assert.ok(await evaluate(`$('pFixed').textContent.includes('카드 대금 100,000원 포함')`));
   assert.ok(await evaluate(`$('pSpent').textContent.includes('카드 사용 60,000원')`));
   for(const width of [360,390,1280]){
     await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<960});
@@ -121,7 +121,8 @@ let browser,socket,profile;
   assert.equal(await evaluate(`$('remain').textContent`),'650,000원');
   await evaluate(`movePeriod(1)`);
   assert.equal(await evaluate(`$('remain').textContent`),'740,000원');
-  assert.ok((await evaluate(`$('pFixed').textContent`)).startsWith('260,000원'));
+  assert.equal(await evaluate(`$('pFixed').textContent`),'200,000원');
+  assert.equal(await evaluate(`$('pCard').textContent`),'60,000원');
   await evaluate(`S.p=__cardBudgetState.p;S.cur=__cardBudgetState.cur;S.day=__cardBudgetState.day;S.cardDay=__cardBudgetState.cardDay;START_DAY=__cardBudgetState.startDay;delete window.__cardBudgetState;save();render()`);
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await evaluate(`document.getElementById('addRecord').click();$('fAmt').value='42000';$('fMemo').value='마트(우유, 계란 등)';document.querySelector('#fFoodW input[value=chilled]').click();document.querySelector('#fFoodW input[value=pantry]').click();document.querySelector('#sheet .btn').click()`);

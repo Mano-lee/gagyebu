@@ -70,8 +70,8 @@ test('card bills reduce the withdrawal period balance while purchases retain spe
   assert.equal(a.run('calc(S.cur).fixed'),300000);
   assert.equal(a.run('calc(S.cur).spent'),95000);
   assert.equal(a.run('calc(S.cur).remain'),655000);
-  assert.ok(a.el('pFixed').innerHTML.startsWith('300,000원'));
-  assert.ok(a.el('pFixed').innerHTML.includes('카드 대금 100,000원 포함'));
+  assert.equal(a.el('pFixed').textContent,'200,000원');
+  assert.equal(a.el('pCard').textContent,'100,000원');
   assert.equal(a.el('remain').textContent,'655,000원');
   assert.ok(a.el('pSpent').innerHTML.startsWith('95,000원'));
   assert.ok(a.el('pSpent').innerHTML.includes('카드 사용 60,000원'));
@@ -128,7 +128,8 @@ test('card bill edits, deletion and confirmation update totals without changing 
   a.run(`S.p['2026-10-01'].tx[0].amt=150000;render()`);
   assert.equal(a.el('remain').textContent,'850,000원');
   a.run(`S.p['2026-10-01'].tx=[];render()`);
-  assert.equal(a.el('pFixed').innerHTML,'0원');
+  assert.equal(a.el('pFixed').textContent,'0원');
+  assert.equal(a.el('pCard').textContent,'0원');
   assert.equal(a.el('remain').textContent,'1,000,000원');
 });
 test('platform is the initial screen and each app shows only its own menus',()=>{
