@@ -24,9 +24,9 @@ header{background:var(--accent);color:#fff;padding:18px 18px 22px}
 .big{font-size:34px;font-weight:700;margin-top:2px}
 .big.neg{color:#ffd2c8}
 .pills{display:flex;gap:8px;margin-top:14px}
-.pill{flex:1;background:rgba(255,255,255,.14);border-radius:12px;padding:9px 10px;font-size:11px}
-.pill b{display:block;font-size:14px;margin-top:3px}
-.pill small{display:block;font-size:10px;font-weight:500;opacity:.8;margin-top:2px;white-space:nowrap;letter-spacing:-.3px}
+.pill{flex:1;min-width:0;background:rgba(255,255,255,.14);border-radius:12px;padding:9px 10px;font-size:11px}
+.pill b{display:block;font-size:14px;margin-top:3px;overflow-wrap:anywhere}
+.pill small{display:block;font-size:10px;font-weight:500;opacity:.8;margin-top:2px;white-space:normal;letter-spacing:-.3px}
 main{padding:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
 .card h2{font-size:15px;margin-bottom:12px}
@@ -397,12 +397,15 @@ function cur(){return ensure(S.cur)}
 // 내가 실제로 쓴 돈: 결제 금액에서 더치페이로 돌려받은 돈을 뺀 금액 (카드 대금은 결제 금액 그대로)
 const net=t=>t.amt-(t.back||0);
 function calc(k){const m=S.p[k];
-  const fixed=m.fixed.reduce((a,f)=>a+f.amt,0);
+  const card=cardBill(k).amt,fixed=m.fixed.reduce((a,f)=>a+f.amt,0)+card;
   const spent=m.tx.filter(t=>t.type==='out').reduce((a,t)=>a+net(t),0);
+  // 카드 사용은 지출 내역에 남기고, 잔액에서는 결제일의 대금으로 차감한다.
+  // 결제 금액 전체를 되돌려 더치페이로 받은 돈은 이번 기간 잔액에 반영한다.
+  const credit=m.tx.filter(t=>t.type==='out'&&t.pay==='credit').reduce((a,t)=>a+t.amt,0);
   const inc=m.tx.filter(t=>t.type==='in').reduce((a,t)=>a+t.amt,0);
   // 예정 지출: 아직 안 쓴 돈이라 지출·분야별에는 안 넣고, 남은 돈에서만 미리 뺌
   const planned=(m.plan||[]).reduce((a,t)=>a+t.amt,0);
-  return{fixed,spent,inc,planned,remain:(m.start||0)-fixed-spent+inc-planned}}
+  return{fixed,card,spent,credit,inc,planned,remain:(m.start||0)-fixed-spent+credit+inc-planned}}
 // 기록(tx)과 예정 지출(plan)을 함께 찾음. a = 들어 있는 목록 이름
 function findTx(id){for(const k in S.p)for(const a of ['tx','plan']){const l=S.p[k][a]||[],i=l.findIndex(t=>t.id===id);if(i>=0)return{k,i,a,t:l[i]}}return null}
 function newTxId(){let id=Date.now();while(findTx(id))id++;return id}
@@ -420,9 +423,9 @@ function render(){
   $('remain').classList.toggle('neg',m.start!==null&&c.remain<0);
   // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록. 수입 기록이 있으면 그 합계를 아래에 작게
   $('pInc').innerHTML=won((m.start||0)+c.inc)+(c.inc?`<small>월급 외 +${won(c.inc)}</small>`:'');
-  $('pFixed').textContent=won(c.fixed);
+  $('pFixed').innerHTML=won(c.fixed)+(c.card?`<small>카드 대금 ${won(c.card)} 포함</small>`:'');
   // 예정 지출은 아직 안 쓴 돈이라 지출 합계엔 안 넣고 아래에 작게 (남은 돈에서는 미리 뺌)
-  $('pSpent').innerHTML=won(c.spent)+(c.planned?`<small>지출 예정 ${won(c.planned)}</small>`:'');
+  $('pSpent').innerHTML=won(c.spent)+(c.credit?`<small>카드 사용 ${won(c.credit)} · 출금일에 차감</small>`:'')+(c.planned?`<small>지출 예정 ${won(c.planned)}</small>`:'');
   const t=wide.matches&&tab==='list'?'home':tab;
   ['home','list','set'].forEach(x=>{$('t-'+x).classList.toggle('on',activeApp==='ledger'&&x===t);$('t-'+x).setAttribute('aria-current',activeApp==='ledger'&&x===t?'page':'false')});
   updatePlatformShell();
@@ -538,11 +541,11 @@ function settings(m){
   <button class="btn ghost" style="margin-top:0;margin-bottom:8px" onclick="saveDay()">변경</button></div></div>
 
   <div class="card"><h2>신용카드 결제일</h2>
-  <p class="muted" style="margin-bottom:10px">전월 1일~말일에 신용카드로 쓴 돈이 이 날 통장에서 빠져나가요. 요약 탭 고정지출 현황에 '신용카드 대금'으로 표시돼요.</p>
+  <p class="muted" style="margin-bottom:10px">전월 1일~말일에 신용카드로 쓴 돈이 이 날 통장에서 빠져나가요. 이 출금일이 속한 기간의 고정지출과 상단 남은 돈에 반영돼요. 카드 사용 내역은 사용한 날짜의 지출로 표시해요.</p>
   <div class="row2"><input id="sCard" inputmode="numeric" value="${cardDay()}" placeholder="1~31">
   <button class="btn ghost" style="margin-top:0;margin-bottom:8px" onclick="saveCardDay()">변경</button></div></div>
 
-  <div class="card"><h2>고정지출 (합계 ${won(calc(S.cur).fixed)})</h2>
+  <div class="card"><h2>고정지출 (합계 ${won(m.fixed.reduce((a,f)=>a+f.amt,0))})</h2>
   <p class="muted" style="margin-bottom:6px">항목을 누르면 수정하거나 삭제할 수 있어요.</p>
   ${sortedFixed(m).map(f=>`<div class="item tap" onclick="openFx(${f.i})"><div>${esc(f.name)}<small>${esc(f.note||f.day+'일')}</small></div>
     <div style="display:flex;align-items:center"><span class="out">-${won(f.amt)}</span><span class="chev">›</span></div></div>`).join('')

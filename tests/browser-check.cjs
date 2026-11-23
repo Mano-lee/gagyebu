@@ -97,6 +97,33 @@ let browser,socket,profile;
   assert.equal(await evaluate('activeApp'),'ledger');
   assert.equal(await evaluate('getComputedStyle($("fridgeNav")).display'),'none');
   await evaluate('window.__alerts=[];window.alert=m=>__alerts.push(m);window.confirm=()=>true');
+  console.log('Checking card bills in fixed expenses and balances without double-counting purchases.');
+  await evaluate(`window.__cardBudgetState={p:S.p,cur:S.cur,day:S.day,cardDay:S.cardDay,startDay:START_DAY};
+    START_DAY=S.day=1;S.cardDay=13;S.cur='2026-11-01';S.p={
+      '2026-10-01':{start:1000000,fixed:[],tx:[{id:1,type:'out',pay:'credit',amt:100000,date:'2026-10-10',cat:'쇼핑'}]},
+      '2026-11-01':{start:1000000,fixed:[{name:'테스트 월세',amt:200000,day:5}],tx:[
+        {id:2,type:'out',amt:50000,date:'2026-11-05',cat:'식비'},
+        {id:3,type:'out',pay:'credit',amt:60000,date:'2026-11-10',cat:'쇼핑'}
+      ]}
+    };render()`);
+  assert.ok((await evaluate(`$('pFixed').textContent`)).startsWith('300,000원'));
+  assert.equal(await evaluate(`$('remain').textContent`),'650,000원');
+  assert.ok((await evaluate(`$('pSpent').textContent`)).startsWith('110,000원'));
+  assert.ok(await evaluate(`$('pFixed').textContent.includes('카드 대금 100,000원 포함')`));
+  assert.ok(await evaluate(`$('pSpent').textContent.includes('카드 사용 60,000원')`));
+  for(const width of [360,390,1280]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<960});
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),`Card budget overflow at ${width}px`);
+    assert.ok(await evaluate(`Array.from(document.querySelectorAll('#ledgerHeader .pill,#ledgerHeader .pill b')).every(el=>el.scrollWidth<=el.clientWidth)`),`Card summary text must fit inside each pill at ${width}px`);
+    const cardShot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(out,'ledger-card-'+width+'.png'),Buffer.from(cardShot.data,'base64'));
+  }
+  await evaluate(`toggleFixed('card')`);
+  assert.equal(await evaluate(`$('remain').textContent`),'650,000원');
+  await evaluate(`movePeriod(1)`);
+  assert.equal(await evaluate(`$('remain').textContent`),'740,000원');
+  assert.ok((await evaluate(`$('pFixed').textContent`)).startsWith('260,000원'));
+  await evaluate(`S.p=__cardBudgetState.p;S.cur=__cardBudgetState.cur;S.day=__cardBudgetState.day;S.cardDay=__cardBudgetState.cardDay;START_DAY=__cardBudgetState.startDay;delete window.__cardBudgetState;save();render()`);
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await evaluate(`document.getElementById('addRecord').click();$('fAmt').value='42000';$('fMemo').value='마트(우유, 계란 등)';document.querySelector('#fFoodW input[value=chilled]').click();document.querySelector('#fFoodW input[value=pantry]').click();document.querySelector('#sheet .btn').click()`);
   assert.equal(await evaluate('pendingFoodTasks().length'),1);
   assert.equal(await evaluate('foodItems().length'),0);

@@ -56,6 +56,81 @@ test('old ledger data loads without changing transactions and acquires a separat
   const old={p:{'2026-10-01':{start:100000,fixed:[],tx:[{id:1,type:'out',amt:3000,cat:'식비',date:'2026-10-03',memo:'점심'}]}}};
   const a=app(old);assert.deepEqual(a.json('S.p["2026-10-01"].tx'),old.p['2026-10-01'].tx);assert.deepEqual(a.json('S.foods'),{});
 });
+
+test('card bills reduce the withdrawal period balance while purchases retain spending totals',()=>{
+  const a=app({day:1,p:{
+    '2025-12-01':{start:1000000,fixed:[],tx:[{id:1,type:'out',pay:'credit',amt:100000,back:20000,date:'2025-12-10',cat:'식비'}]},
+    '2026-01-01':{start:1000000,fixed:[{name:'월세',amt:200000,day:5}],tx:[
+      {id:2,type:'out',amt:50000,back:5000,date:'2026-01-03',cat:'식비'},
+      {id:3,type:'out',pay:'credit',amt:60000,back:10000,date:'2026-01-04',cat:'쇼핑'},
+      {id:4,type:'in',amt:20000,date:'2026-01-05',cat:'환급'}
+    ],plan:[{id:5,type:'plan',amt:30000,date:'2026-01-20',cat:'식비'}]}
+  }});
+  a.run(`S.cur='2026-01-01';openApp('ledger')`);
+  assert.equal(a.run('calc(S.cur).fixed'),300000);
+  assert.equal(a.run('calc(S.cur).spent'),95000);
+  assert.equal(a.run('calc(S.cur).remain'),655000);
+  assert.ok(a.el('pFixed').innerHTML.startsWith('300,000원'));
+  assert.ok(a.el('pFixed').innerHTML.includes('카드 대금 100,000원 포함'));
+  assert.equal(a.el('remain').textContent,'655,000원');
+  assert.ok(a.el('pSpent').innerHTML.startsWith('95,000원'));
+  assert.ok(a.el('pSpent').innerHTML.includes('카드 사용 60,000원'));
+  assert.ok(a.run('home(cur(),calc(S.cur))').includes('쇼핑'));
+  assert.equal(a.run(`calc('2025-12-01').remain`),1020000,'card reimbursements increase cash before the full bill is withdrawn');
+  a.run(`ensure('2026-02-01')`);
+  assert.equal(a.run(`calc('2026-02-01').fixed`),260000);
+  assert.equal(a.run(`calc('2026-02-01').remain`),740000);
+});
+
+test('salary periods count a card purchase once when its bill falls within the same period',()=>{
+  const a=app({day:21,cardDay:13,p:{
+    '2026-10-21':{start:1000000,fixed:[],tx:[{id:1,type:'out',pay:'credit',amt:40000,date:'2026-11-05',cat:'식비'}]},
+    '2026-11-21':{start:1000000,fixed:[{name:'월세',amt:200000,day:25}],tx:[
+      {id:2,type:'out',pay:'credit',amt:60000,date:'2026-11-25',cat:'쇼핑'},
+      {id:3,type:'out',amt:30000,date:'2026-12-05',cat:'생활'},
+      {id:4,type:'out',pay:'credit',amt:70000,date:'2026-12-10',cat:'쇼핑'}
+    ]}
+  }});
+  assert.deepEqual(a.json(`cardBill('2026-11-21')`),{ym:'2026-11',amt:100000});
+  assert.equal(a.run(`calc('2026-11-21').spent`),160000);
+  assert.equal(a.run(`calc('2026-11-21').remain`),670000);
+  a.run(`ensure('2026-12-21')`);
+  assert.equal(a.run(`calc('2026-12-21').fixed`),270000);
+  assert.equal(a.run(`calc('2026-12-21').remain`),730000);
+});
+
+test('card withdrawal periods handle year changes and month-end payment days',()=>{
+  for(const {day,cardDay,key,date,billDate} of [
+    {day:1,cardDay:13,key:'2026-01-01',date:'2025-12-31',billDate:'2026-01-13'},
+    {day:21,cardDay:13,key:'2025-12-21',date:'2025-12-31',billDate:'2026-01-13'},
+    {day:21,cardDay:25,key:'2026-01-21',date:'2025-12-31',billDate:'2026-01-25'},
+    {day:1,cardDay:31,key:'2026-02-01',date:'2026-01-31',billDate:'2026-02-28'},
+    {day:21,cardDay:31,key:'2028-02-21',date:'2028-01-31',billDate:'2028-02-29'}
+  ]){
+    const a=app({day,cardDay,p:{}});
+    a.run(`ensure(periodOf('${date}')).tx.push({id:1,type:'out',pay:'credit',amt:100000,date:'${date}',cat:'식비'});ensure('${key}').start=1000000`);
+    assert.equal(a.run(`fixedDate('${key}',cardDay())`),billDate);
+    assert.equal(a.run(`calc('${key}').fixed`),100000,key);
+    assert.equal(a.run(`calc('${key}').remain`),900000,key);
+  }
+});
+
+test('card bill edits, deletion and confirmation update totals without changing saved records',()=>{
+  const a=app({day:1,p:{
+    '2026-10-01':{start:1000000,fixed:[],tx:[{id:1,type:'out',pay:'credit',amt:100000,date:'2026-10-10',cat:'쇼핑'}]},
+    '2026-11-01':{start:1000000,fixed:[],tx:[]}
+  }});
+  a.run(`S.cur='2026-11-01';render()`);
+  const before=a.json('S.p');
+  a.run(`toggleFixed('card')`);
+  assert.equal(a.run('calc(S.cur).remain'),900000);
+  assert.deepEqual(a.json(`S.p['2026-10-01']`),before['2026-10-01']);
+  a.run(`S.p['2026-10-01'].tx[0].amt=150000;render()`);
+  assert.equal(a.el('remain').textContent,'850,000원');
+  a.run(`S.p['2026-10-01'].tx=[];render()`);
+  assert.equal(a.el('pFixed').innerHTML,'0원');
+  assert.equal(a.el('remain').textContent,'1,000,000원');
+});
 test('platform is the initial screen and each app shows only its own menus',()=>{
   const a=app();assert.equal(a.run('activeApp'),'platform');assert.equal(a.el('appShell').hidden,true);assert.ok(a.el('view').innerHTML.includes('가계부 열기'));
   a.run('openApp("ledger")');assert.equal(a.run('activeApp'),'ledger');assert.equal(a.el('ledgerNav').hidden,false);assert.equal(a.el('fridgeNav').hidden,true);assert.equal(a.el('fridgeHeader').hidden,true);
