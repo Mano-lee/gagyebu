@@ -98,8 +98,8 @@ let browser,socket,profile;
   assert.equal(await evaluate('getComputedStyle($("fridgeNav")).display'),'none');
   await evaluate('window.__alerts=[];window.alert=m=>__alerts.push(m);window.confirm=()=>true');
   console.log('Checking card bills in fixed expenses and balances without double-counting purchases.');
-  await evaluate(`window.__cardBudgetState={p:S.p,cur:S.cur,day:S.day,cardDay:S.cardDay,startDay:START_DAY,Date};
-    window.Date=class extends Date{constructor(...args){super(...(args.length?args:['2026-11-24T12:00:00']))}};
+  await evaluate(`window.__cardBudgetState={p:S.p,cur:S.cur,day:S.day,cardDay:S.cardDay,startDay:START_DAY,Date,date:'2026-11-24'};
+    window.Date=class extends Date{constructor(...args){super(...(args.length?args:[__cardBudgetState.date+'T12:00:00']))}};
     START_DAY=S.day=1;S.cardDay=13;S.cur='2026-11-01';S.p={
       '2026-10-01':{start:1000000,fixed:[],tx:[{id:1,type:'out',pay:'credit',amt:100000,date:'2026-10-10',cat:'쇼핑'}]},
       '2026-11-01':{start:1000000,fixed:[{name:'테스트 월세',amt:200000,day:5}],tx:[
@@ -109,8 +109,8 @@ let browser,socket,profile;
     };render()`);
   assert.equal(await evaluate(`$('pFixed').textContent`),'200,000원');
   assert.equal(await evaluate(`$('pCard').textContent`),'100,000원');
-  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed','pCardUsedRange','pCardNextPay'].map(id=>$(id).textContent)`),
-    ['10월 1~31일','마감','60,000원','11월 1~24일','12/13 출금 예정']);
+  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed','pCardUsedRange','pCardPayDate'].map(id=>$(id).textContent)`),
+    ['10월 1~31일','마감','60,000원','11월 1~24일','11/13 출금일']);
   assert.equal(await evaluate(`$('remain').textContent`),'650,000원');
   assert.ok((await evaluate(`$('pSpent').textContent`)).startsWith('110,000원'));
   assert.ok(await evaluate(`$('pSpent').textContent.includes('카드 사용 포함')`));
@@ -126,9 +126,24 @@ let browser,socket,profile;
   assert.equal(await evaluate(`$('remain').textContent`),'740,000원');
   assert.equal(await evaluate(`$('pFixed').textContent`),'200,000원');
   assert.equal(await evaluate(`$('pCard').textContent`),'60,000원');
-  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed'].map(id=>$(id).textContent)`),['11월 1~30일','집계 중','60,000원']);
-  await evaluate(`S.p['2026-11-01'].tx.push({id:4,type:'out',pay:'credit',amt:25000,date:'2026-11-30',cat:'쇼핑'});movePeriod(1)`);
-  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed'].map(id=>$(id).textContent)`),['12월 1~31일','집계 예정','60,000원']);
+  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed','pCardUsedStatus'].map(id=>$(id).textContent)`),
+    ['11월 1~30일','집계 중','0원','집계 예정']);
+  await evaluate(`movePeriod(1)`);
+  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed'].map(id=>$(id).textContent)`),['12월 1~31일','집계 예정','0원']);
+  await evaluate(`START_DAY=S.day=21;S.p={};
+    for(const [date,amt] of [['2026-11-20',40000],['2026-11-21',60000],['2026-11-24',5000],['2026-12-01',7000],['2026-12-20',8000],['2026-12-21',9000]]){
+      ensure(periodOf(date)).tx.push({type:'out',pay:'credit',amt,date,cat:'쇼핑'});
+    }
+    S.cur=periodOf(today());render()`);
+  const cardUsage=()=>evaluate(`['pCardUsed','pCardUsedRange','pCardUsedStatus'].map(id=>$(id).textContent)`);
+  assert.deepEqual(await cardUsage(),['65,000원','11월 21~24일','집계 중']);
+  assert.deepEqual(await evaluate(`['pCard','pCardRange','pCardPayDate'].map(id=>$(id).textContent)`),['105,000원','11월 1~30일','12/13 출금일']);
+  await evaluate(`__cardBudgetState.date='2026-12-02';render()`);
+  assert.deepEqual(await cardUsage(),['72,000원','11월 21일~12월 2일','집계 중']);
+  await evaluate(`__cardBudgetState.date='2026-12-21';render()`);
+  assert.deepEqual(await cardUsage(),['80,000원','11월 21일~12월 20일','마감']);
+  await evaluate(`movePeriod(1)`);
+  assert.deepEqual(await cardUsage(),['9,000원','12월 21일','집계 중']);
   await evaluate(`S.p=__cardBudgetState.p;S.cur=__cardBudgetState.cur;S.day=__cardBudgetState.day;S.cardDay=__cardBudgetState.cardDay;START_DAY=__cardBudgetState.startDay;window.Date=__cardBudgetState.Date;delete window.__cardBudgetState;save();render()`);
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await evaluate(`document.getElementById('addRecord').click();$('fAmt').value='42000';$('fMemo').value='마트(우유, 계란 등)';document.querySelector('#fFoodW input[value=chilled]').click();document.querySelector('#fFoodW input[value=pantry]').click();document.querySelector('#sheet .btn').click()`);

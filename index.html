@@ -208,11 +208,11 @@ nav button.on{color:var(--accent);font-weight:700}
       <div>
         신용카드 대금<b id="pCard"></b>
         <div class="card-summary-meta"><span id="pCardRange"></span><span class="card-status" id="pCardStatus"></span></div>
+        <small id="pCardPayDate"></small>
       </div>
       <div>
-        이번 달 사용액<b id="pCardUsed"></b>
-        <div class="card-summary-meta"><span id="pCardUsedRange"></span><span class="card-status" data-status="open">집계 중</span></div>
-        <small id="pCardNextPay"></small>
+        기간 내 사용액<b id="pCardUsed"></b>
+        <div class="card-summary-meta"><span id="pCardUsedRange"></span><span class="card-status" id="pCardUsedStatus"></span></div>
       </div>
     </div>
     <div class="pill pill-spent"><span>이번 기간 지출</span><b id="pSpent"></b></div>
@@ -395,8 +395,12 @@ function fmt(el){const n=num(el.value);el.value=n?n.toLocaleString('ko-KR'):''}
 // ---- 예산 기간 계산 ----
 function periodOf(date){let[y,m,d]=date.split('-').map(Number);if(d<START_DAY){m--;if(m<1){m=12;y--}}return `${y}-${pad(m)}-${pad(START_DAY)}`}
 function shiftPeriod(k,dir){let[y,m]=k.split('-').map(Number);m+=dir;if(m<1){m=12;y--}if(m>12){m=1;y++}return `${y}-${pad(m)}-${pad(START_DAY)}`}
-function periodLabel(k){const[y1,m1]=k.split('-').map(Number);const e=new Date(y1,m1,START_DAY-1);
-  return `${y1}년 ${m1}월 ${START_DAY}일 ~ ${e.getMonth()+1}월 ${e.getDate()}일`}
+function periodEnd(k){
+  const [year,month]=k.split('-').map(Number);
+  return new Date(Date.UTC(year,month,START_DAY-1)).toISOString().slice(0,10);
+}
+function periodLabel(k){const[y1,m1]=k.split('-').map(Number),[,m2,d2]=periodEnd(k).split('-').map(Number);
+  return `${y1}년 ${m1}월 ${START_DAY}일 ~ ${m2}월 ${d2}일`}
 function fixedDate(k,day){let[y,m]=k.split('-').map(Number);if(day<START_DAY){m++;if(m>12){m=1;y++}}
   const last=new Date(y,m,0).getDate();return `${y}-${pad(m)}-${pad(Math.min(day,last))}`}
 function daysLeft(k,f){return Math.round((new Date(fixedDate(k,f.day)+'T00:00')-new Date(today()+'T00:00'))/864e5)}
@@ -447,7 +451,7 @@ function render(){
   // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록. 수입 기록이 있으면 그 합계를 아래에 작게
   $('pInc').innerHTML=won((m.start||0)+c.inc)+(c.inc?`<small>월급 외 +${won(c.inc)}</small>`:'');
   $('pFixed').textContent=won(c.fixed-c.card);
-  renderCardSummary(c);
+  renderCardSummary(m,c);
   // 예정 지출은 아직 안 쓴 돈이라 지출 합계엔 안 넣고 아래에 작게 (남은 돈에서는 미리 뺌)
   $('pSpent').innerHTML=won(c.spent)+(c.credit?'<small>카드 사용 포함 · 출금일에 차감</small>':'')+(c.planned?`<small>지출 예정 ${won(c.planned)}</small>`:'');
   const t=wide.matches&&tab==='list'?'home':tab;
@@ -466,28 +470,41 @@ function dayLabel(d){const w='일월화수목금토'[new Date(d+'T00:00').getDay
 
 // ---- 신용카드 대금: 전월 1일~말일 사용분이 결제일에 출금 ----
 const cardDay=()=>S.cardDay||13;
-function creditSum(ym,through=ym+'-31'){let s=0;for(const k in S.p)S.p[k].tx.forEach(t=>{if(t.type==='out'&&t.pay==='credit'&&t.date.startsWith(ym)&&t.date<=through)s+=t.amt});return s}
+function creditSum(ym){let s=0;for(const k in S.p)S.p[k].tx.forEach(t=>{if(t.type==='out'&&t.pay==='credit'&&t.date.startsWith(ym))s+=t.amt});return s}
 const nextYm=(ym,dir)=>{let[y,m]=ym.split('-').map(Number);m+=dir;if(m<1){m=12;y--}if(m>12){m=1;y++}return `${y}-${pad(m)}`};
 // 예산 기간마다 결제일이 한 번 들어 있음 → 그 결제일에 나가는 대금(사용한 달 = 결제일의 전월)
 function cardBill(k){const ym=nextYm(fixedDate(k,cardDay()).slice(0,7),-1);return{ym,amt:creditSum(ym)}}
 
-function cardUseRange(ym,last,now){
-  const [year,month]=ym.split('-').map(Number);
-  return `${year===Number(now.slice(0,4))?'':year+'년 '}${month}월 1${last===1?'일':`~${last}일`}`;
+function cardUseRange(from,to,todayYear){
+  const [year,month,day]=from.split('-').map(Number);
+  const [endYear,endMonth,endDay]=to.split('-').map(Number);
+  const start=`${year===todayYear?'':year+'년 '}${month}월 ${day}`;
+  if(from===to)return start+'일';
+  if(year===endYear&&month===endMonth)return `${start}~${endDay}일`;
+  return `${start}일~${year===endYear?'':endYear+'년 '}${endMonth}월 ${endDay}일`;
 }
-function renderCardSummary(c){
-  const date=today(),now=date.slice(0,7);
-  const [year,month]=c.cardMonth.split('-').map(Number);
-  const status=$('pCardStatus');
-  status.dataset.status=c.cardMonth<now?'closed':c.cardMonth===now?'open':'future';
-  status.textContent={closed:'마감',open:'집계 중',future:'집계 예정'}[status.dataset.status];
+function setCardStatus(id,status){
+  $(id).dataset.status=status;
+  $(id).textContent={closed:'마감',open:'집계 중',future:'집계 예정'}[status];
+}
+function renderCardSummary(m,c){
+  const date=today(),now=date.slice(0,7),todayYear=Number(date.slice(0,4));
+  const [billYear,billMonth]=c.cardMonth.split('-').map(Number);
+  const lastDay=new Date(billYear,billMonth,0).getDate();
   $('pCard').textContent=won(c.card);
-  $('pCardRange').textContent=cardUseRange(c.cardMonth,new Date(year,month,0).getDate(),now);
-  $('pCardUsed').textContent=won(creditSum(now,date));
-  $('pCardUsedRange').textContent=cardUseRange(now,Number(date.slice(-2)),now);
-  const [payYear,payMonth]=nextYm(now,1).split('-').map(Number);
-  const payDay=Math.min(cardDay(),new Date(payYear,payMonth,0).getDate());
-  $('pCardNextPay').textContent=`${payMonth}/${payDay} 출금 예정`;
+  $('pCardRange').textContent=cardUseRange(c.cardMonth+'-01',`${c.cardMonth}-${lastDay}`,todayYear);
+  setCardStatus('pCardStatus',c.cardMonth<now?'closed':c.cardMonth===now?'open':'future');
+  const [,payMonth,payDay]=fixedDate(S.cur,cardDay()).split('-').map(Number);
+  $('pCardPayDate').textContent=`${payMonth}/${payDay} 출금일`;
+
+  const start=S.cur,end=periodEnd(start);
+  const status=date<start?'future':date>end?'closed':'open';
+  const through=date<end?date:end;
+  const used=m.tx.filter(t=>t.type==='out'&&t.pay==='credit'&&t.date>=start&&t.date<=through)
+    .reduce((sum,t)=>sum+t.amt,0);
+  $('pCardUsed').textContent=won(used);
+  $('pCardUsedRange').textContent=cardUseRange(start,status==='future'?end:through,todayYear);
+  setCardStatus('pCardUsedStatus',status);
 }
 
 function fixedCard(m){
