@@ -27,11 +27,15 @@ header{background:var(--accent);color:#fff;padding:18px 18px 22px}
 .pill{min-width:0;background:rgba(255,255,255,.14);border-radius:12px;padding:12px;font-size:13px}
 .pill b{display:block;font-size:18px;margin-top:4px;overflow-wrap:anywhere}
 .pill small{display:block;font-size:12px;font-weight:500;opacity:.8;margin-top:4px;white-space:normal;letter-spacing:-.3px}
-.pill-spent{grid-column:1/-1;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.pill-spent>span{flex:none}
-.pill-spent b{margin:0;text-align:right}
-.card-summary{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.card-summary>div+div{border-left:1px solid rgba(255,255,255,.25);padding-left:10px}
+.pill.pill-spent{grid-column:1/-1;display:block}
+.spending-total{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.spending-total b{margin:0;text-align:right}
+.spending-breakdown{border-top:1px solid rgba(255,255,255,.25);margin-top:8px;padding-top:8px}
+.spending-breakdown b{font-size:15px;text-align:left}
+#pPlanned:empty{display:none}
+.card-summary{grid-column:1/-1}
+.card-summary,.spending-breakdown{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.card-summary>div+div,.spending-breakdown>div+div{border-left:1px solid rgba(255,255,255,.25);padding-left:10px}
 .card-summary-meta{display:grid;justify-items:start;gap:4px;margin-top:6px;font-size:12px}
 .card-status{border-radius:6px;padding:2px 5px;background:#dbece4;color:#174c3d;font-weight:700;white-space:nowrap}
 .card-status[data-status="open"]{background:#ffedc0;color:#593905}
@@ -158,9 +162,8 @@ nav button.on{color:var(--accent);font-weight:700}
   .pills{display:flex;flex-direction:column;gap:6px;margin-top:18px}
   .pill{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:12px}
   .pill b{margin:0;font-size:15px;text-align:right}
-  .pill-spent{align-items:flex-start}
   .pill.card-summary{display:grid;align-items:start}
-  .card-summary b{margin-top:4px;text-align:left}
+  .card-summary b,.spending-breakdown b{margin-top:4px;text-align:left}
   .sy{text-align:left}
   .fab{position:static;width:auto;height:auto;margin:14px 24px 6px;padding:13px;border-radius:12px;background:#fff;color:var(--accent);font-size:15px;font-weight:700;box-shadow:none;cursor:pointer}
   .fab:hover{background:#eef5f2}
@@ -211,11 +214,19 @@ nav button.on{color:var(--accent);font-weight:700}
         <small id="pCardPayDate"></small>
       </div>
       <div>
-        기간 내 사용액<b id="pCardUsed"></b>
-        <div class="card-summary-meta"><span id="pCardUsedRange"></span><span class="card-status" id="pCardUsedStatus"></span></div>
+        다음 달 대금<b id="pCardNext"></b>
+        <div class="card-summary-meta"><span id="pCardNextRange"></span><span class="card-status" id="pCardNextStatus"></span></div>
+        <small id="pCardNextPayDate"></small>
       </div>
     </div>
-    <div class="pill pill-spent"><span>이번 기간 지출</span><b id="pSpent"></b></div>
+    <div class="pill pill-spent">
+      <div class="spending-total"><span>이번 기간 지출</span><b id="pSpent"></b></div>
+      <div class="spending-breakdown">
+        <div>체크·현금<b id="pCashSpent"></b></div>
+        <div>신용카드 사용<b id="pCreditSpent"></b></div>
+      </div>
+      <small id="pPlanned"></small>
+    </div>
   </div>
 </header>
 <header id="fridgeHeader" hidden><h2 class="fridge-side-title">냉장고</h2><p class="fridge-side-help">구매한 식재료부터 소비 기록까지,<br>우리 집 먹거리를 관리해요.</p></header>
@@ -395,12 +406,8 @@ function fmt(el){const n=num(el.value);el.value=n?n.toLocaleString('ko-KR'):''}
 // ---- 예산 기간 계산 ----
 function periodOf(date){let[y,m,d]=date.split('-').map(Number);if(d<START_DAY){m--;if(m<1){m=12;y--}}return `${y}-${pad(m)}-${pad(START_DAY)}`}
 function shiftPeriod(k,dir){let[y,m]=k.split('-').map(Number);m+=dir;if(m<1){m=12;y--}if(m>12){m=1;y++}return `${y}-${pad(m)}-${pad(START_DAY)}`}
-function periodEnd(k){
-  const [year,month]=k.split('-').map(Number);
-  return new Date(Date.UTC(year,month,START_DAY-1)).toISOString().slice(0,10);
-}
-function periodLabel(k){const[y1,m1]=k.split('-').map(Number),[,m2,d2]=periodEnd(k).split('-').map(Number);
-  return `${y1}년 ${m1}월 ${START_DAY}일 ~ ${m2}월 ${d2}일`}
+function periodLabel(k){const[y1,m1]=k.split('-').map(Number);const end=new Date(y1,m1,START_DAY-1);
+  return `${y1}년 ${m1}월 ${START_DAY}일 ~ ${end.getMonth()+1}월 ${end.getDate()}일`}
 function fixedDate(k,day){let[y,m]=k.split('-').map(Number);if(day<START_DAY){m++;if(m>12){m=1;y++}}
   const last=new Date(y,m,0).getDate();return `${y}-${pad(m)}-${pad(Math.min(day,last))}`}
 function daysLeft(k,f){return Math.round((new Date(fixedDate(k,f.day)+'T00:00')-new Date(today()+'T00:00'))/864e5)}
@@ -423,16 +430,19 @@ function ensure(k){
 function cur(){return ensure(S.cur)}
 // 내가 실제로 쓴 돈: 결제 금액에서 더치페이로 돌려받은 돈을 뺀 금액 (카드 대금은 결제 금액 그대로)
 const net=t=>t.amt-(t.back||0);
-function calc(k){const m=S.p[k];
-  const {amt:card,ym:cardMonth}=cardBill(k),fixed=m.fixed.reduce((a,f)=>a+f.amt,0)+card;
-  const spent=m.tx.filter(t=>t.type==='out').reduce((a,t)=>a+net(t),0);
+function calc(k,bill=cardBill(k)){const m=S.p[k];
+  const card=bill.amt,fixed=m.fixed.reduce((a,f)=>a+f.amt,0)+card;
+  const expenses=m.tx.filter(t=>t.type==='out');
+  const creditExpenses=expenses.filter(t=>t.pay==='credit');
+  const spent=expenses.reduce((sum,t)=>sum+net(t),0);
+  const cardSpent=creditExpenses.reduce((sum,t)=>sum+net(t),0);
   // 카드 사용은 지출 내역에 남기고, 잔액에서는 결제일의 대금으로 차감한다.
   // 결제 금액 전체를 되돌려 더치페이로 받은 돈은 이번 기간 잔액에 반영한다.
-  const credit=m.tx.filter(t=>t.type==='out'&&t.pay==='credit').reduce((a,t)=>a+t.amt,0);
+  const credit=creditExpenses.reduce((sum,t)=>sum+t.amt,0);
   const inc=m.tx.filter(t=>t.type==='in').reduce((a,t)=>a+t.amt,0);
   // 예정 지출: 아직 안 쓴 돈이라 지출·분야별에는 안 넣고, 남은 돈에서만 미리 뺌
   const planned=(m.plan||[]).reduce((a,t)=>a+t.amt,0);
-  return{fixed,card,cardMonth,spent,credit,inc,planned,remain:(m.start||0)-fixed-spent+credit+inc-planned}}
+  return{fixed,card,spent,cardSpent,inc,planned,remain:(m.start||0)-fixed-spent+credit+inc-planned}}
 // 기록(tx)과 예정 지출(plan)을 함께 찾음. a = 들어 있는 목록 이름
 function findTx(id){for(const k in S.p)for(const a of ['tx','plan']){const l=S.p[k][a]||[],i=l.findIndex(t=>t.id===id);if(i>=0)return{k,i,a,t:l[i]}}return null}
 function newTxId(){let id=Date.now();while(findTx(id))id++;return id}
@@ -444,16 +454,21 @@ const wide=window.matchMedia('(min-width:960px)');
 wide.addEventListener('change',()=>render());
 
 function render(){
-  const m=cur(),c=calc(S.cur);
+  const m=cur(),bill=cardBill(S.cur),c=calc(S.cur,bill);
   $('plabel').textContent=periodLabel(S.cur);
   $('remain').textContent=m.start===null?'잔고 미입력':won(c.remain);
   $('remain').classList.toggle('neg',m.start!==null&&c.remain<0);
   // 이번 기간 수입 = 시작 잔고(월급) + 수입 기록. 수입 기록이 있으면 그 합계를 아래에 작게
   $('pInc').innerHTML=won((m.start||0)+c.inc)+(c.inc?`<small>월급 외 +${won(c.inc)}</small>`:'');
   $('pFixed').textContent=won(c.fixed-c.card);
-  renderCardSummary(m,c);
+  const now=today().slice(0,7),next=shiftPeriod(S.cur,1);
+  renderCardBill('pCard',bill,S.cur,now);
+  renderCardBill('pCardNext',cardBill(next),next,now);
   // 예정 지출은 아직 안 쓴 돈이라 지출 합계엔 안 넣고 아래에 작게 (남은 돈에서는 미리 뺌)
-  $('pSpent').innerHTML=won(c.spent)+(c.credit?'<small>카드 사용 포함 · 출금일에 차감</small>':'')+(c.planned?`<small>지출 예정 ${won(c.planned)}</small>`:'');
+  $('pSpent').textContent=won(c.spent);
+  $('pCashSpent').textContent=won(c.spent-c.cardSpent);
+  $('pCreditSpent').textContent=won(c.cardSpent);
+  $('pPlanned').textContent=c.planned?`지출 예정 ${won(c.planned)}`:'';
   const t=wide.matches&&tab==='list'?'home':tab;
   ['home','list','set'].forEach(x=>{$('t-'+x).classList.toggle('on',activeApp==='ledger'&&x===t);$('t-'+x).setAttribute('aria-current',activeApp==='ledger'&&x===t?'page':'false')});
   updatePlatformShell();
@@ -475,36 +490,17 @@ const nextYm=(ym,dir)=>{let[y,m]=ym.split('-').map(Number);m+=dir;if(m<1){m=12;y
 // 예산 기간마다 결제일이 한 번 들어 있음 → 그 결제일에 나가는 대금(사용한 달 = 결제일의 전월)
 function cardBill(k){const ym=nextYm(fixedDate(k,cardDay()).slice(0,7),-1);return{ym,amt:creditSum(ym)}}
 
-function cardUseRange(from,to,todayYear){
-  const [year,month,day]=from.split('-').map(Number);
-  const [endYear,endMonth,endDay]=to.split('-').map(Number);
-  const start=`${year===todayYear?'':year+'년 '}${month}월 ${day}`;
-  if(from===to)return start+'일';
-  if(year===endYear&&month===endMonth)return `${start}~${endDay}일`;
-  return `${start}일~${year===endYear?'':endYear+'년 '}${endMonth}월 ${endDay}일`;
-}
-function setCardStatus(id,status){
-  $(id).dataset.status=status;
-  $(id).textContent={closed:'마감',open:'집계 중',future:'집계 예정'}[status];
-}
-function renderCardSummary(m,c){
-  const date=today(),now=date.slice(0,7),todayYear=Number(date.slice(0,4));
-  const [billYear,billMonth]=c.cardMonth.split('-').map(Number);
+function renderCardBill(id,bill,k,now){
+  const [billYear,billMonth]=bill.ym.split('-').map(Number);
   const lastDay=new Date(billYear,billMonth,0).getDate();
-  $('pCard').textContent=won(c.card);
-  $('pCardRange').textContent=cardUseRange(c.cardMonth+'-01',`${c.cardMonth}-${lastDay}`,todayYear);
-  setCardStatus('pCardStatus',c.cardMonth<now?'closed':c.cardMonth===now?'open':'future');
-  const [,payMonth,payDay]=fixedDate(S.cur,cardDay()).split('-').map(Number);
-  $('pCardPayDate').textContent=`${payMonth}/${payDay} 출금일`;
-
-  const start=S.cur,end=periodEnd(start);
-  const status=date<start?'future':date>end?'closed':'open';
-  const through=date<end?date:end;
-  const used=m.tx.filter(t=>t.type==='out'&&t.pay==='credit'&&t.date>=start&&t.date<=through)
-    .reduce((sum,t)=>sum+t.amt,0);
-  $('pCardUsed').textContent=won(used);
-  $('pCardUsedRange').textContent=cardUseRange(start,status==='future'?end:through,todayYear);
-  setCardStatus('pCardUsedStatus',status);
+  const yearLabel=billYear===Number(now.slice(0,4))?'':billYear+'년 ';
+  const [,payMonth,payDay]=fixedDate(k,cardDay()).split('-').map(Number);
+  const status=bill.ym<now?'closed':bill.ym===now?'open':'future';
+  $(id).textContent=won(bill.amt);
+  $(id+'Range').textContent=`${yearLabel}${billMonth}월 1~${lastDay}일`;
+  $(id+'Status').dataset.status=status;
+  $(id+'Status').textContent={closed:'마감',open:'집계 중',future:'집계 예정'}[status];
+  $(id+'PayDate').textContent=`${payMonth}/${payDay} 출금일`;
 }
 
 function fixedCard(m){

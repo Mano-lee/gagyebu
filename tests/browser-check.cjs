@@ -108,12 +108,12 @@ let browser,socket,profile;
       ]}
     };render()`);
   assert.equal(await evaluate(`$('pFixed').textContent`),'200,000원');
-  assert.equal(await evaluate(`$('pCard').textContent`),'100,000원');
-  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed','pCardUsedRange','pCardPayDate'].map(id=>$(id).textContent)`),
-    ['10월 1~31일','마감','60,000원','11월 1~24일','11/13 출금일']);
+  const billSummary=id=>evaluate(`['','Range','Status','PayDate'].map(suffix=>$('${id}'+suffix).textContent)`);
+  const spendingSummary=()=>evaluate(`['pSpent','pCashSpent','pCreditSpent'].map(id=>$(id).textContent)`);
+  assert.deepEqual(await billSummary('pCard'),['100,000원','10월 1~31일','마감','11/13 출금일']);
+  assert.deepEqual(await billSummary('pCardNext'),['60,000원','11월 1~30일','집계 중','12/13 출금일']);
   assert.equal(await evaluate(`$('remain').textContent`),'650,000원');
-  assert.ok((await evaluate(`$('pSpent').textContent`)).startsWith('110,000원'));
-  assert.ok(await evaluate(`$('pSpent').textContent.includes('카드 사용 포함')`));
+  assert.deepEqual(await spendingSummary(),['110,000원','50,000원','60,000원']);
   for(const width of [320,360,390,1280]){
     await send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<960});
     assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),`Card budget overflow at ${width}px`);
@@ -125,25 +125,21 @@ let browser,socket,profile;
   await evaluate(`movePeriod(1)`);
   assert.equal(await evaluate(`$('remain').textContent`),'740,000원');
   assert.equal(await evaluate(`$('pFixed').textContent`),'200,000원');
-  assert.equal(await evaluate(`$('pCard').textContent`),'60,000원');
-  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed','pCardUsedStatus'].map(id=>$(id).textContent)`),
-    ['11월 1~30일','집계 중','0원','집계 예정']);
-  await evaluate(`movePeriod(1)`);
-  assert.deepEqual(await evaluate(`['pCardRange','pCardStatus','pCardUsed'].map(id=>$(id).textContent)`),['12월 1~31일','집계 예정','0원']);
+  assert.deepEqual(await billSummary('pCard'),['60,000원','11월 1~30일','집계 중','12/13 출금일']);
+  assert.deepEqual(await billSummary('pCardNext'),['0원','12월 1~31일','집계 예정','1/13 출금일']);
+  assert.deepEqual(await spendingSummary(),['0원','0원','0원']);
   await evaluate(`START_DAY=S.day=21;S.p={};
     for(const [date,amt] of [['2026-11-20',40000],['2026-11-21',60000],['2026-11-24',5000],['2026-12-01',7000],['2026-12-20',8000],['2026-12-21',9000]]){
-      ensure(periodOf(date)).tx.push({type:'out',pay:'credit',amt,date,cat:'쇼핑'});
+      ensure(periodOf(date)).tx.push({id:Number(date.replaceAll('-','')),type:'out',pay:'credit',amt,date,cat:'쇼핑'});
     }
+    ensure('2026-11-21').tx.push({id:1,type:'out',amt:30000,date:'2026-12-02',cat:'식비'});
     S.cur=periodOf(today());render()`);
-  const cardUsage=()=>evaluate(`['pCardUsed','pCardUsedRange','pCardUsedStatus'].map(id=>$(id).textContent)`);
-  assert.deepEqual(await cardUsage(),['65,000원','11월 21~24일','집계 중']);
-  assert.deepEqual(await evaluate(`['pCard','pCardRange','pCardPayDate'].map(id=>$(id).textContent)`),['105,000원','11월 1~30일','12/13 출금일']);
   await evaluate(`__cardBudgetState.date='2026-12-02';render()`);
-  assert.deepEqual(await cardUsage(),['72,000원','11월 21일~12월 2일','집계 중']);
-  await evaluate(`__cardBudgetState.date='2026-12-21';render()`);
-  assert.deepEqual(await cardUsage(),['80,000원','11월 21일~12월 20일','마감']);
+  assert.deepEqual(await billSummary('pCard'),['105,000원','11월 1~30일','마감','12/13 출금일']);
+  assert.deepEqual(await billSummary('pCardNext'),['24,000원','12월 1~31일','집계 중','1/13 출금일']);
+  assert.deepEqual(await spendingSummary(),['110,000원','30,000원','80,000원']);
   await evaluate(`movePeriod(1)`);
-  assert.deepEqual(await cardUsage(),['9,000원','12월 21일','집계 중']);
+  assert.deepEqual(await spendingSummary(),['9,000원','0원','9,000원']);
   await evaluate(`S.p=__cardBudgetState.p;S.cur=__cardBudgetState.cur;S.day=__cardBudgetState.day;S.cardDay=__cardBudgetState.cardDay;START_DAY=__cardBudgetState.startDay;window.Date=__cardBudgetState.Date;delete window.__cardBudgetState;save();render()`);
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await evaluate(`document.getElementById('addRecord').click();$('fAmt').value='42000';$('fMemo').value='마트(우유, 계란 등)';document.querySelector('#fFoodW input[value=chilled]').click();document.querySelector('#fFoodW input[value=pantry]').click();document.querySelector('#sheet .btn').click()`);

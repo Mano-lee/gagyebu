@@ -73,8 +73,10 @@ test('card bills reduce the withdrawal period balance while purchases retain spe
   assert.equal(a.el('pFixed').textContent,'200,000원');
   assert.equal(a.el('pCard').textContent,'100,000원');
   assert.equal(a.el('remain').textContent,'655,000원');
-  assert.ok(a.el('pSpent').innerHTML.startsWith('95,000원'));
-  assert.ok(a.el('pSpent').innerHTML.includes('카드 사용 포함 · 출금일에 차감'));
+  assert.equal(a.el('pSpent').textContent,'95,000원');
+  assert.equal(a.el('pCashSpent').textContent,'45,000원');
+  assert.equal(a.el('pCreditSpent').textContent,'50,000원');
+  assert.equal(a.el('pPlanned').textContent,'지출 예정 30,000원');
   assert.ok(a.run('home(cur(),calc(S.cur))').includes('쇼핑'));
   assert.equal(a.run(`calc('2025-12-01').remain`),1020000,'card reimbursements increase cash before the full bill is withdrawn');
   a.run(`ensure('2026-02-01')`);
